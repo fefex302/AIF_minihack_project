@@ -1,0 +1,10 @@
+# ignore ALL :Zone.Identifier files
+*:Zone.Identifier
+
+# ignore ALL .zip files
+*.zip
+
+# ignore ALL files in ANY directory named 1,2,3
+1/
+2/
+3/
