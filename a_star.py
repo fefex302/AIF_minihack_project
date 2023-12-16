@@ -50,7 +50,7 @@ def look_around(kb: Prolog, obs: dict):
             if not (obs['screen_descriptions'][i][j] == 0).all():
                 print('searching')
                 obj = bytes(obs['screen_descriptions'][i][j]).decode('utf-8').rstrip('\x00')
-                if 'apple' in obj:
+                if 'gold' in obj:
                     if bool(list(kb.query(f'position(apple,commestible,_,_)'))) == False:
                         print('apple stored')
                         kb.asserta(f'position(apple, commestible, {j}, {i})')

@@ -11,18 +11,18 @@ import random
 
 
 #creation of a leve
-def create_level(width: int, height: int, num_cloud: int = 4, monster: str = 'kobold', trap: str = 'falling rock', weapon: str = 'tsurugi'):
+def create_level(width: int, height: int, num_gold: int = 4, monster: str = 'leprechaun', trap: str = 'falling rock', weapon: str = 'tsurugi'):
 
     lvl = LevelGenerator(w=width, h=height)
     lvl.add_object(name='apple', symbol='%')
-
     #we put a number of cloud equals to the parameter 'num_cloud' which is 4 by default
-    for i in range(num_cloud):
-        randx = random.randint(0, 9)
-        randy = random.randint(0, 9)
-        lvl.add_terrain((randx,randy),'C')
+    for i in range(num_gold):
+        randx = random.randint(0, width - 1)
+        randy = random.randint(0, height - 1)
+        lvl.add_gold(100,(randx,randy))
+        #lvl.add_terrain((randx,randy),'C')
 
-    #lvl.add_monster(name=monster)
+    lvl.add_monster(name=monster,symbol="l",args=('hostile','awake'))
     #lvl.add_monster(name='minotaur',args=('hostile','asleep'),place=(5,5))
     #lvl.add_stair_down(place=(5,5))
 
