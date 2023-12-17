@@ -1,19 +1,41 @@
 import numpy as np
 import math
+import random
+
+from minihack import LevelGenerator
+from minihack import RewardManager
 
 from typing import Tuple, List
 
+def level_generator(width: int, height: int):
+    lvl = LevelGenerator(w=width, h=height)
+    num_coins = random.randint(1,8)
+    for _ in range(num_coins):
+        lvl.add_gold(amount=random.randint(5,50))
+
+    return lvl.get_des()
+
+def reward_generator():
+    reward_manager = RewardManager()
+    return reward_manager
+    
 def get_player_location(game_map: np.ndarray, symbol : str = "@") -> Tuple[int, int]:
     # x, y = np.where(game_map == ord(symbol))
     # return (x[0], y[0])
     y, x = np.where(game_map == ord(symbol))
     return (y[0], x[0])
 
-def get_target_location(game_map: np.ndarray, symbol : str = ">") -> Tuple[int, int]:
+def get_target_location(game_map: np.ndarray, symbol : str = "$") -> Tuple[int, int]:
     # x, y = np.where(game_map == ord(symbol))
     # return (x[0], y[0])
     y, x = np.where(game_map == ord(symbol))
     return (y[0], x[0])
+
+def get_targets_location(game_map: np.ndarray, symbol : str = "$") -> List[Tuple[int, int]]:
+    # x, y = np.where(game_map == ord(symbol))
+    # return (x[0], y[0])
+    tuple_arr_coor = np.where(game_map == ord(symbol))
+    return tuple_arr_coor
 
 def is_wall(position_element: int) -> bool:
     obstacles = "|- "
@@ -71,8 +93,8 @@ def actions_from_path(start: Tuple[int, int], path: List[Tuple[int, int]]) -> Li
             if x_s > x:
                 actions.append(action_map["W"])  #N
             else: actions.append(action_map["E"]) #S
-        else:
-            raise Exception("x and y can't change at the same time. oblique moves not allowed!")
+        # else:
+        #    raise Exception("x and y can't change at the same time. oblique moves not allowed!")
         x_s = x
         y_s = y
     
