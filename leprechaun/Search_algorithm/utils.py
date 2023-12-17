@@ -10,8 +10,11 @@ from typing import Tuple, List
 def level_generator(width: int, height: int):
     lvl = LevelGenerator(w=width, h=height)
     num_coins = random.randint(1,8)
+    # num_leprechaun = random.randint(1,2)
     for _ in range(num_coins):
         lvl.add_gold(amount=random.randint(5,50))
+    # for _ in range(num_leprechaun):
+    #    lvl.add_monster(name="leprechaun",args=["awake"])
 
     return lvl.get_des()
 
@@ -20,20 +23,14 @@ def reward_generator():
     return reward_manager
     
 def get_player_location(game_map: np.ndarray, symbol : str = "@") -> Tuple[int, int]:
-    # x, y = np.where(game_map == ord(symbol))
-    # return (x[0], y[0])
     y, x = np.where(game_map == ord(symbol))
     return (y[0], x[0])
 
 def get_target_location(game_map: np.ndarray, symbol : str = "$") -> Tuple[int, int]:
-    # x, y = np.where(game_map == ord(symbol))
-    # return (x[0], y[0])
     y, x = np.where(game_map == ord(symbol))
     return (y[0], x[0])
 
 def get_targets_location(game_map: np.ndarray, symbol : str = "$") -> List[Tuple[int, int]]:
-    # x, y = np.where(game_map == ord(symbol))
-    # return (x[0], y[0])
     tuple_arr_coor = np.where(game_map == ord(symbol))
     return tuple_arr_coor
 
@@ -82,7 +79,6 @@ def actions_from_path(start: Tuple[int, int], path: List[Tuple[int, int]]) -> Li
     }
     actions = []
     # le coordinate x_s e y_s rappresentano le coordinate della posizione del personaggio (che ovviamente si muove quindi cambiano)
-    # x_s, y_s = start
     y_s, x_s = start
     for (y, x) in path:
         if x_s == x:
