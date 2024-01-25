@@ -40,12 +40,13 @@ SE = 5
 SW = 6
 NW = 7
 
+MOVES = [np.array([-1, -1]), np.array([-1, 0]), np.array([-1, 1]), np.array([0, -1]), np.array([0, 1]), np.array([1, -1]), np.array([1, 0]), np.array([1, 1])]
+MOVES_DIRS = [SW, W, NW, S, N, SE, E, NE]
+
 def print_stats(blstats):
     stat_vals = list(blstats)
-    i = 0
-    for s in STATS:
+    for i, s in enumerate(STATS):
         print(s + ': ' + str(stat_vals[i]))
-        i += 1
 
 '''
 class GoldEvent(Event):
@@ -102,10 +103,12 @@ class GoldRoom():
     
 
     def make(self):
-        self.env = gym.make('MiniHack-Navigation-Custom-v0',
-               character='sam-hum-neu-mal',
-               observation_keys=('blstats', 'chars', 'pixel', 'message'),
-               des_file=self.level_generator.get_des())#, reward_manager=self.reward_manager ,actions=...)
+        self.env = gym.make(
+            'MiniHack-Navigation-Custom-v0',
+            character='sam-hum-neu-mal',
+            observation_keys=('blstats', 'chars', 'pixel', 'message'),
+            des_file=self.level_generator.get_des()
+        )#, reward_manager=self.reward_manager, actions=...)
     
     def reset(self):
         state = self.env.reset()
@@ -165,54 +168,84 @@ class GoldRoom():
         return self.curr_state, reward, done, info
 
 
-    def agent_pos(self):
+    def agent_idxs(self):
         x, y = np.where(self.curr_state['map'] == AGENT_CHAR)
         return x[0], y[0]
 
+    def gold_idxs(self):
+        xs, ys = np.where(self.curr_state['map'] == GOLD_CHAR)
+        return xs, ys
+
+    def goal_idxs(self):
+        xs, ys = np.where(self.curr_state['map'] == STAIR_CHAR)
+        return xs[0], ys[0]
+    
+    def agent_coords(self):
+        x, y = np.where(self.curr_state['map'] == AGENT_CHAR)
+        return y[0], self.w - x[0] - 1
+
+    def gold_coords(self):
+        xs, ys = np.where(self.curr_state['map'] == GOLD_CHAR)
+
+        return list(zip(ys, [self.w - x - 1 for x in xs]))
+
+    def goal_coords(self):
+        xs, ys = np.where(self.curr_state['map'] == STAIR_CHAR)
+        return ys[0], self.w - xs[0] - 1
 
     def possible_actions(self) -> set:
-        x, y = self.agent_pos()
+        x, y = self.agent_idxs()
+        n = 0b1000
+        s = 0b0100
+        w = 0b0010
+        e = 0b0001
+        b = 0b0000
+        nw = n & w
+        ne = n & e
+        sw = s & w
+        se = s & e
         possible_actions = set()
         if x-1 >= 0:
-            possible_actions.add(N)
+            b |= n
         if x+1 < self.h:
-            possible_actions.add(S)
+            b |= s
         if y-1 >= 0:
-            possible_actions.add(W)
-            if N in possible_actions:
-                possible_actions.add(NW)
-            if S in possible_actions:
-                possible_actions.add(SW)
+            b |= w
         if y+1 < self.w:
+            b |= e
+        if b & n:
+            possible_actions.add(N)
+        if b & w:
+            possible_actions.add(W)
+        if b & e:
             possible_actions.add(E)
-            if N in possible_actions:
-                possible_actions.add(NE)
-            if S in possible_actions:
-                possible_actions.add(SE)
+        if b & s:
+            possible_actions.add(S)
+        if b & n & w == nw:
+            possible_actions.add(NW)
+        if b & n & e == ne:
+            possible_actions.add(NE)
+        if b & s & w == sw:
+            possible_actions.add(SW)
+        if b & s & e == se:
+            possible_actions.add(SE)
+            
         return possible_actions
     
     #TBR
     def dist_from_gold(self, x, y):
-        curr_point = np.array(x, y)
-        gold_x, gold_y = np.where(self.curr_state['map'] == GOLD_CHAR)
-        distances = np.linalg.norm(np.array([gold_x, gold_y]).T - np.array([x, y]), axis=1)
-        min_distance = np.min(distances)
-        return min_distance
-
-    #TBR
-    def dist_from_leprechaun(self, x, y):
-        curr_point = np.array(x, y)
-        lep_x, lep_y = np.where(self.curr_state['map'] == LEPRECHAUN_CHAR)
-        distances = np.linalg.norm(np.array([lep_x, lep_y]).T - np.array([x, y]), axis=1)
+        agent_x, agent_y = self.agent_coords()
+        gold_coords = self.gold_coords()
+        distances = [np.linalg.norm([gold_x - agent_x, gold_y - agent_y]) for gold_x, gold_y in gold_coords]
         min_distance = np.min(distances)
         return min_distance
 
     #TBR
     def dist_from_goal(self, x, y):
         if (x not in range(0, self.h)) or (y not in range(0, self.w)): return np.inf
-        curr_point = np.array(x, y)
-        goal_x, goal_y = np.where(self.curr_state['map'] == STAIR_CHAR)
-        distances = np.linalg.norm(np.array([goal_x, goal_y]).T - np.array([x, y]), axis=1)
+        agent_x, agent_y = self.agent_coords()
+        goal_x, goal_y = self.goal_coords()
+        distances = np.linalg.norm([goal_x - agent_x, goal_y - agent_y])
         min_distance = np.min(distances)
         return min_distance
 
@@ -220,27 +253,20 @@ class GoldRoom():
 def random_step(env:GoldRoom):
     return env.step(action=random.sample(env.possible_actions(), 1)[0])
 
-#TBR
+
 def greedy_goal_step(env:GoldRoom):
-    x, y = env.agent_pos()
-    coords = []
-    dist = []
-    for i in [x-1, x, x+1]:
-        for j in [y-1, y, y+1]:
-            if i != x or j != y:
-                coords.append((i, j))
-                dist.append(env.dist_from_goal(i, j))
-    idx = np.argmin(dist)
-    x_new, y_new = coords[idx]
-    print(x_new, y_new)
-    if x_new == x+1 and y_new == y-1: return env.step(action=NW)
-    elif x_new == x+1 and y_new == y: return env.step(action=N)
-    elif x_new == x+1 and y_new == y+1: return env.step(action=NE)
-    elif x_new == x and y_new == y-1: return env.step(action=W)
-    elif x_new == x and y_new == y+1: return env.step(action=E)
-    if x_new == x-1 and y_new == y-1: return env.step(action=SW)
-    elif x_new == x-1 and y_new == y: return env.step(action=S)
-    elif x_new == x-1 and y_new == y+1: return env.step(action=SE)
+    agent_point = np.array(env.agent_coords())
+    goal_point = np.array(env.goal_coords())
+    reachables = [agent_point + move for move in MOVES]
+    scores = []
+    for reachable_point, move in zip(reachables, MOVES_DIRS):
+        if move in env.possible_actions():
+            scores.append(-np.linalg.norm(goal_point - reachable_point))
+        else:
+            scores.append(-np.inf)
+    move = MOVES_DIRS[np.argmax(scores)]
+    return env.step(action=move)
+
 
 def show_episode(states):
     image = plt.imshow(states[0]['pixel'][100:300, 500:750])
