@@ -4,12 +4,27 @@ import matplotlib.pyplot as plt
 from pyswip import Prolog
 import IPython.display as display
 from minihack import LevelGenerator
-#from minihack import RewardManager
-#from minihack.reward_manager import SequentialRewardManager
 import random
-from nle import nethack
-from nle.nethack import Command
 import numpy as np
+from nle import nethack
+import enum
+from nle.nethack import Command, CompassCardinalDirection, CompassIntercardinalDirection
+
+
+class WaitAction(enum.IntEnum):
+    WAIT = ord(".")
+
+Actions = enum.IntEnum(
+    "Actions",
+    {
+        **CompassCardinalDirection.__members__,
+        **CompassIntercardinalDirection.__members__,
+        **WaitAction.__members__,
+    },
+)
+
+ACTIONS = tuple(Actions)
+
 
 STATS = ['x', 'y', 'strength_percentage', 'strength', 'dexterity', 'constitution', 'intelligence',
     'wisdom', 'charisma', 'score', 'hitpoints (health)', 'max_hitpoints', 'depth', 'gold',
@@ -48,32 +63,44 @@ def print_stats(blstats):
     for i, s in enumerate(STATS):
         print(s + ': ' + str(stat_vals[i]))
 
-'''
-class GoldEvent(Event):
-
-    def __init__(self):
-        super.__init__(
-            reward=0,
-            repeatable=True,
-            terminal_required=False,
-            terminal_sufficient=False
-            )
-    
-    def check(self, env, previous_observation, action, observation) -> float:
-        previous_gold = previous_observation[env._original_observation_keys.index('blstats')][13]
-        current_gold = observation[env._original_observation_keys.index('blstats')][13]
-        return current_gold - previous_gold
-'''
 
 class GoldRoom():
 
-    def __init__(self, w=2, h=2):
+    def __init__(self, w=2, h=2, gold_score=1, stair_score=1, time_penalty=0):
         self.w = w
         self.h = h
         self.level_generator = LevelGenerator(w=w, h=h)
-        #self.reward_manager = RewardManager()
-        #self.reward_manager.add_event(GoldEvent())
         self.level_generator.add_goal_pos()
+        self.reward_manager = RewardManager()
+        #self.reward_manager.add_event(StairReachedEvent(reward=stair_score))
+        #self.reward_manager.add_event(GoldReachedEvent(reward=gold_score))
+        #self.reward_manager.add_event(TimePassageEvent(reward=time_penalty))
+    
+
+    @staticmethod
+    def stateRapr(state):
+        stats = state['blstats']
+        stats_dict = {
+            'x_coord': stats[X_COORD],
+            'y_coord': stats[Y_COORD],
+            'strength_percentage': stats[STRENGTH_PERCENTAGE],
+            'strength': stats[STRENGTH],
+            'health': stats[HEALTH],
+            'gold': stats[GOLD],
+            'time': stats[TIME],
+            'carrying_capacity': stats[CARRYING_CAPACITY]
+        }
+        non_empty_rows = ~np.all(state['chars'] == 32, axis=1)
+        non_empty_cols = ~np.all(state['chars'] == 32, axis=0)
+        matrix_map = state['chars'][non_empty_rows][:, non_empty_cols]
+        mystate = {
+            'stats': stats_dict,
+            'map': matrix_map,
+            'pixel': state['pixel'],
+            'message': bytes(state['message']).decode('utf-8').rstrip('\x00')
+        }
+        return mystate
+
 
     
     def add_leprechaun(self, x=-1, y=-1):
@@ -108,63 +135,21 @@ class GoldRoom():
             character='sam-hum-neu-mal',
             observation_keys=('blstats', 'chars', 'pixel', 'message'),
             des_file=self.level_generator.get_des()
-        )#, reward_manager=self.reward_manager, actions=...)
+        )
     
+
     def reset(self):
-        state = self.env.reset()
-        stats = state['blstats']
-        stats_dict = {
-            'x_coord': stats[X_COORD],
-            'y_coord': stats[Y_COORD],
-            'strength_percentage': stats[STRENGTH_PERCENTAGE],
-            'strength': stats[STRENGTH],
-            'health': stats[HEALTH],
-            'gold': stats[GOLD],
-            'time': stats[TIME],
-            'carrying_capacity': stats[CARRYING_CAPACITY]
-        }
-
-        non_empty_rows = ~np.all(state['chars'] == 32, axis=1)
-        non_empty_cols = ~np.all(state['chars'] == 32, axis=0)
-
-        matrix_map = state['chars'][non_empty_rows][:, non_empty_cols]
-
         self.prev_state = None
-        self.curr_state = {
-            'stats': stats_dict,
-            'map': matrix_map,
-            'pixel': state['pixel'],
-            'message': bytes(state['message']).decode('utf-8').rstrip('\x00')
-        }
+        state = self.env.reset()
+        self.curr_state = GoldRoom.stateRapr(state)
         return self.curr_state
 
 
     def step(self, action:int):
         state, reward, done, info = self.env.step(action)
-        stats = state['blstats']
-        stats_dict = {
-            'x_coord': stats[X_COORD],
-            'y_coord': stats[Y_COORD],
-            'strength_percentage': stats[STRENGTH_PERCENTAGE],
-            'strength': stats[STRENGTH],
-            'health': stats[HEALTH],
-            'gold': stats[GOLD],
-            'time': stats[TIME],
-            'carrying_capacity': stats[CARRYING_CAPACITY]
-        }
-
-        non_empty_rows = ~np.all(state['chars'] == 32, axis=1)
-        non_empty_cols = ~np.all(state['chars'] == 32, axis=0)
-
-        matrix_map = state['chars'][non_empty_rows][:, non_empty_cols]
-
         self.prev_state = self.curr_state
-        self.curr_state = {
-            'stats': stats_dict,
-            'map': matrix_map,
-            'pixel': state['pixel'],
-            'message': bytes(state['message']).decode('utf-8').rstrip('\x00')
-        }
+        self.curr_state = GoldRoom.stateRapr(state)
+        # TODO: customize reward (stair_score, gold_score, time_penalty)
         return self.curr_state, reward, done, info
 
 
@@ -176,20 +161,19 @@ class GoldRoom():
         xs, ys = np.where(self.curr_state['map'] == GOLD_CHAR)
         return xs, ys
 
-    def goal_idxs(self):
+    def stair_idxs(self):
         xs, ys = np.where(self.curr_state['map'] == STAIR_CHAR)
         return xs[0], ys[0]
-    
+
     def agent_coords(self):
         x, y = np.where(self.curr_state['map'] == AGENT_CHAR)
         return y[0], self.w - x[0] - 1
 
     def gold_coords(self):
         xs, ys = np.where(self.curr_state['map'] == GOLD_CHAR)
-
         return list(zip(ys, [self.w - x - 1 for x in xs]))
 
-    def goal_coords(self):
+    def stair_coords(self):
         xs, ys = np.where(self.curr_state['map'] == STAIR_CHAR)
         return ys[0], self.w - xs[0] - 1
 
@@ -232,40 +216,57 @@ class GoldRoom():
             
         return possible_actions
     
-    #TBR
-    def dist_from_gold(self, x, y):
-        agent_x, agent_y = self.agent_coords()
-        gold_coords = self.gold_coords()
-        distances = [np.linalg.norm([gold_x - agent_x, gold_y - agent_y]) for gold_x, gold_y in gold_coords]
-        min_distance = np.min(distances)
-        return min_distance
-
-    #TBR
-    def dist_from_goal(self, x, y):
-        if (x not in range(0, self.h)) or (y not in range(0, self.w)): return np.inf
-        agent_x, agent_y = self.agent_coords()
-        goal_x, goal_y = self.goal_coords()
-        distances = np.linalg.norm([goal_x - agent_x, goal_y - agent_y])
-        min_distance = np.min(distances)
-        return min_distance
+    # TBR
+    #def dist_from_gold(self, x, y) -> float:
+    #    agent_x, agent_y = self.agent_coords()
+    #    gold_coords = self.gold_coords()
+    #    distances = [np.linalg.norm([gold_x - agent_x, gold_y - agent_y]) for gold_x, gold_y in gold_coords]
+    #    min_distance = np.min(distances)
+    #    return min_distance
+#
+    ## TBR
+    #def dist_from_stair(self, x, y):
+    #    if (x not in range(0, self.h)) or (y not in range(0, self.w)): return np.inf
+    #    agent_x, agent_y = self.agent_coords()
+    #    stair_x, stair_y = self.stair_coords()
+    #    distances = np.linalg.norm([stair_x - agent_x, stair_y - agent_y])
+    #    min_distance = np.min(distances)
+    #    return min_distance
 
 
 def random_step(env:GoldRoom):
     return env.step(action=random.sample(env.possible_actions(), 1)[0])
 
 
-def greedy_goal_step(env:GoldRoom):
+def greedy_stair_step(env:GoldRoom):
     agent_point = np.array(env.agent_coords())
-    goal_point = np.array(env.goal_coords())
+    stair_point = np.array(env.stair_coords())
     reachables = [agent_point + move for move in MOVES]
     scores = []
     for reachable_point, move in zip(reachables, MOVES_DIRS):
         if move in env.possible_actions():
-            scores.append(-np.linalg.norm(goal_point - reachable_point))
+            scores.append(-np.linalg.norm(stair_point - reachable_point))
         else:
             scores.append(-np.inf)
     move = MOVES_DIRS[np.argmax(scores)]
     return env.step(action=move)
+
+
+def apply_greedy_strategy(env, max_steps):
+    env.make()
+    states = [env.reset()]
+    rewards = []
+    cumulative_rewards = []
+    state, reward, done, info = greedy_stair_step(env)
+    for i in range(0, max_steps):
+        if not done:
+            state, reward, done, info = greedy_stair_step(env)
+            rewards.append(reward)
+            cumulative_rewards.append(np.sum(rewards))
+            states.append(state)
+        else:
+            break
+    return states, rewards, cumulative_rewards, done, i
 
 
 def show_episode(states):
