@@ -8,22 +8,22 @@ import random
 import numpy as np
 from nle import nethack
 import enum
-from nle.nethack import Command, CompassCardinalDirection, CompassIntercardinalDirection
+#from nle.nethack import Command, CompassCardinalDirection, CompassIntercardinalDirection
 
 
-class WaitAction(enum.IntEnum):
-    WAIT = ord(".")
-
-Actions = enum.IntEnum(
-    "Actions",
-    {
-        **CompassCardinalDirection.__members__,
-        **CompassIntercardinalDirection.__members__,
-        **WaitAction.__members__,
-    },
-)
-
-ACTIONS = tuple(Actions)
+#class WaitAction(enum.IntEnum):
+#    WAIT = ord(".")
+#
+#Actions = enum.IntEnum(
+#    "Actions",
+#    {
+#        **CompassCardinalDirection.__members__,
+#        **CompassIntercardinalDirection.__members__,
+#        **WaitAction.__members__,
+#    },
+#)
+#
+#ACTIONS = tuple(Actions)
 
 
 STATS = ['x', 'y', 'strength_percentage', 'strength', 'dexterity', 'constitution', 'intelligence',
@@ -71,10 +71,6 @@ class GoldRoom():
         self.h = h
         self.level_generator = LevelGenerator(w=w, h=h)
         self.level_generator.add_goal_pos()
-        self.reward_manager = RewardManager()
-        #self.reward_manager.add_event(StairReachedEvent(reward=stair_score))
-        #self.reward_manager.add_event(GoldReachedEvent(reward=gold_score))
-        #self.reward_manager.add_event(TimePassageEvent(reward=time_penalty))
     
 
     @staticmethod
@@ -215,23 +211,6 @@ class GoldRoom():
             possible_actions.add(SE)
             
         return possible_actions
-    
-    # TBR
-    #def dist_from_gold(self, x, y) -> float:
-    #    agent_x, agent_y = self.agent_coords()
-    #    gold_coords = self.gold_coords()
-    #    distances = [np.linalg.norm([gold_x - agent_x, gold_y - agent_y]) for gold_x, gold_y in gold_coords]
-    #    min_distance = np.min(distances)
-    #    return min_distance
-#
-    ## TBR
-    #def dist_from_stair(self, x, y):
-    #    if (x not in range(0, self.h)) or (y not in range(0, self.w)): return np.inf
-    #    agent_x, agent_y = self.agent_coords()
-    #    stair_x, stair_y = self.stair_coords()
-    #    distances = np.linalg.norm([stair_x - agent_x, stair_y - agent_y])
-    #    min_distance = np.min(distances)
-    #    return min_distance
 
 
 def random_step(env:GoldRoom):
@@ -258,6 +237,7 @@ def apply_greedy_strategy(env, max_steps):
     rewards = []
     cumulative_rewards = []
     state, reward, done, info = greedy_stair_step(env)
+    states.append(state)
     for i in range(0, max_steps):
         if not done:
             state, reward, done, info = greedy_stair_step(env)
@@ -271,7 +251,8 @@ def apply_greedy_strategy(env, max_steps):
 
 def show_episode(states):
     image = plt.imshow(states[0]['pixel'][100:300, 500:750])
-    for state in states:
+    for state in states[1:]:
         display.display(plt.gcf())
         display.clear_output(wait=True)
         image.set_data(np.array(state['pixel'])[100:300, 500:750])
+        time.sleep(0.2)
