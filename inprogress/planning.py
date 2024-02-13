@@ -4,32 +4,55 @@ import random
 import numpy as np
 from queue import PriorityQueue
 from gold_room_env import MiniHackGoldRoom
-from utils import action_to_string, action_to_move, move_to_action
+from utils import action_to_string, action_to_move, move_to_action, allowed_moves, is_composite
 from typing import Callable, Tuple, List
 import gym
+from enum import Enum
 
 
-N_ARR = np.array([0, 1])
-S_ARR = np.array([0, -1])
-W_ARR = np.array([-1, 0])
-E_ARR = np.array([1, 0])
-NE_ARR = N_ARR + E_ARR
-SE_ARR = S_ARR + E_ARR
-SW_ARR = S_ARR + W_ARR
-NW_ARR = N_ARR + W_ARR
-MOVES = [N_ARR, E_ARR, S_ARR, W_ARR, NE_ARR, SE_ARR, SW_ARR, NW_ARR]
+class AllowedMovesFunction:
 
-N = 0
-E = 1
-S = 2
-W = 3
-NE = 3 + N + E
-SE = 2 + S + E
-SW = 1 + S + W
-NW = 4 + N + W
-ACTIONS = [N, E, S, W, NE, SE, SW, NW]
+    def __init__(self):
+        pass
 
-ACTION_NAMES = ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW']
+    def __call__(self, state: dict):
+        pass
+
+
+class AllowedSimpleMovesFunction(AllowedMovesFunction):
+
+    def __init__(
+        self,
+        width: int = None,
+        height: int = None,
+        to_avoid: Tuple[int, int] = None
+        ):
+
+        self.width = width
+        self.height = height
+        self.to_avoid = to_avoid
+    
+    def __call__(self, state: dict) -> List[np.ndarray[int]]:
+        return allowed_moves(
+            width=self.width,
+            height=self.height,
+            agent_coord=state['agent_coord'],
+            to_avoid=self.to_avoid
+        )
+
+
+class AllowedCompositeMovesFunction(AllowedMovesFunction):
+
+    def __init__(self):
+        pass
+    
+    def __call__(self, state: dict) -> List[np.ndarray[int]]:
+        return \
+            [np.array(state['stair_coord']) - np.array(state['agent_coord'])]\
+                + [np.array(g_coord) - np.array(state['agent_coord']) for g_coord in state['gold_coords'] if state['agent_coord'] != g_coord]
+
+ALLOWED_SIMPLE_MOVES = AllowedSimpleMovesFunction()
+ALLOWED_COMPOSITE_MOVES = AllowedCompositeMovesFunction()
 
 
 class Plan():
@@ -56,8 +79,8 @@ class State:
     def __init__(
         self,
         agent_coords: Tuple[int, int],
-        gold_coords: List[Tuple[int, int]], 
-        stair_coords: Tuple[int, int]
+        stair_coords: Tuple[int, int],
+        gold_coords: List[Tuple[int, int]]
         ):
 
         self.agent_coords = agent_coords
@@ -74,6 +97,13 @@ class State:
     
     def __hash__(self):
         return hash((self.agent_coords, tuple(self.gold_coords), self.stair_coords))
+    
+    def to_dict(self) -> dict:
+        return {
+            'agent_coord': self.agent_coords,
+            'stair_coord': self.stair_coords,
+            'gold_coords': self.gold_coords
+            }
 
 
 class Node:
@@ -159,29 +189,6 @@ class HFunction:
             )
 
 
-class AllowedMovesFunction:
-    def __init__(
-        self,
-        width: int,
-        height: int,
-        to_avoid: Tuple[int, int] = None,
-        function: Callable[[int, int, State], List[np.ndarray[int]]] = None
-        ):
-
-        self.width = width
-        self.height = height
-        self.function = function
-        self.to_avoid = to_avoid
-    
-    def __call__(self, state: State, to_avoid: Tuple[int, int] = None) -> List[np.ndarray[int]]:
-        return self.function(
-            width=self.width,
-            height=self.height,
-            to_avoid=self.to_avoid,
-            state=state
-        )
-
-
 def h(gold_score: float, time_penalty: float, stair_score: float, state: State) -> float:
     agent_stair_dist = np.linalg.norm(np.array(state.agent_coords) - np.array(state.stair_coords))
     actual_golds = [g for g in state.gold_coords if g != state.agent_coords and g != state.stair_coords]
@@ -207,63 +214,20 @@ def g(gold_score: float, time_penalty: float, stair_score: float, prev_g: float,
         time_penalty * np.linalg.norm(np.array(state.agent_coords) - np.array(prev_state.agent_coords))
 
 
-def allowed_moves(width: int, height: int, state: State, to_avoid: Tuple[int, int] = None) -> List[np.ndarray[int]]:
-    x, y = state.agent_coords
-    n = 0b1000
-    s = 0b0100
-    w = 0b0010
-    e = 0b0001
-    b = 0b0000
-    nw = n | w
-    ne = n | e
-    sw = s | w
-    se = s | e
-    moves = []
-    if x-1 >= 0:
-        b |= w
-        moves.append(W_ARR)
-    if x+1 < height:
-        b |= e
-        moves.append(E_ARR)
-    if y-1 >= 0:
-        b |= s
-        moves.append(S_ARR)
-    if y+1 < width:
-        b |= n
-        moves.append(N_ARR)
-    if b & (n | w) == nw:
-        moves.append(NW_ARR)
-    if b & (n | e) == ne:
-        moves.append(NE_ARR)
-    if b & (s | w) == sw:
-        moves.append(SW_ARR)
-    if b & (s | e) == se:
-        moves.append(SE_ARR)
-    
-    moves = [m for m in moves if tuple(state.agent_coords + m) != to_avoid]
-
-    return moves
-
-
-def allowed_supermoves(state: State, width: int = None, height: int = None, to_avoid: Tuple[int, int] = None) -> List[np.ndarray[int]]:
-    del width, height, to_avoid
-    return [np.array(state.stair_coords) - np.array(state.agent_coords)] + [np.array(g_coords) - np.array(state.agent_coords) for g_coords in state.gold_coords if state.agent_coords != g_coords]
-
-
-def is_composite(move: np.ndarray[int]) -> bool:
-    for m in MOVES:
-        if np.array_equal(move, m):
-            return False
-    return True
-
-
 def a_star(
     env: MiniHackGoldRoom,
-    allowed_moves_fun: Callable[[int, int, State], List[np.ndarray[int]]],
     g_function: Callable[[float, float, float, float, State], float],
     h_function: Callable[[float, float, float, State], float],
-    to_avoid: Tuple[int, int] = None
+    allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
     ) -> Tuple[Plan, int]:
+
+    if not isinstance(allowed_moves_function, AllowedMovesFunction):
+        raise ValueError('Parameter allowed_moves_function must be of type AllowedMovesFunction')
+    
+    if isinstance(allowed_moves_function, AllowedSimpleMovesFunction):
+        print('AAA')
+        allowed_moves_function.width = env.width
+        allowed_moves_function.height = env.height
 
     g = GFunction(
         gold_score=env.gold_score,
@@ -277,13 +241,6 @@ def a_star(
         time_penalty=env.time_penalty,
         stair_score=env.stair_score,
         h_function=h_function
-    )
-
-    moves_from_state = AllowedMovesFunction(
-        width=env.width,
-        height=env.height,
-        to_avoid=to_avoid,
-        function=allowed_moves_fun
     )
 
     _, init_g = env.myreset()
@@ -317,7 +274,7 @@ def a_star(
             break
         g.prev_g = node.g_value
         g.prev_state = node.state
-        moves = moves_from_state(node.state)
+        moves = allowed_moves_function(state=node.state.to_dict())
         reachable_points = [tuple(np.array(node.state.agent_coords) + move) for move in moves]
         actual_golds = [gold_coords for gold_coords in node.state.gold_coords if gold_coords != node.state.agent_coords]
 
@@ -356,13 +313,18 @@ def a_star(
                         to_avoid = None
                     else:
                         to_avoid = node.state.stair_coords
+                    
+                    sub_allowed_moves_function = AllowedSimpleMovesFunction(
+                        width=env2.width,
+                        height=env2.height,
+                        to_avoid=to_avoid
+                    )
 
                     subplan, n_expanded_nodes = a_star(
                         env=env2,
-                        allowed_moves_fun=allowed_moves,
+                        allowed_moves_function=sub_allowed_moves_function,
                         g_function=g_function,
-                        h_function=h_function,
-                        to_avoid=to_avoid
+                        h_function=h_function
                         )
 
                     additional_expanded_nodes += n_expanded_nodes
@@ -473,7 +435,7 @@ def random_search(
 
     _, init_reward = env.myreset()
 
-    states = [env.curr_state]
+    states = [env.state()]
     rewards = [init_reward]
     stair_reached = (env.agent_coord == env.stair_coord)
 
@@ -484,7 +446,6 @@ def random_search(
             stair_coords=env.stair_coord
         )
         actions = [move_to_action(move) for move in moves_from_state(mystate)]
-        print([action_to_string(a) for a in actions])
         state, reward, stair_reached = env.mystep(
             action=random.sample(
                 population=actions,
@@ -503,7 +464,7 @@ def apply(env: MiniHackGoldRoom, plan: Plan) -> Tuple[List[dict], List[float], b
         reward = env.gold_score
     else:
         reward = 0
-    states = [env.curr_state]
+    states = [env.state()]
     rewards = [reward]
     done = (env.agent_coord == env.stair_coord)
     for action in plan.action_sequence:

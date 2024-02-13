@@ -9,7 +9,7 @@ import warnings
 from nle.nethack import Command, CompassCardinalDirection, CompassIntercardinalDirection
 import gym
 from typing import Any
-from utils import action_to_move
+from utils import action_to_move, DIAGONAL_ACTIONS
 
 
 class WaitAction(enum.IntEnum):
@@ -50,8 +50,8 @@ STAIR_CHAR = 62
 class MiniHackGoldRoom(MiniHack):
 
     def __init__(
-        self, *args, width=2, height=2, seeds=None, gold_score=1,
-        stair_score=1, time_penalty=0, agent_coord=(-1, -1),
+        self, *args, width=2, height=2, seeds=None, gold_score=1.0,
+        stair_score=1.0, time_penalty=0.0, agent_coord=(-1, -1),
         stair_coord=(-1, -1), gold_coords=None, leprechaun_coords=None,
         n_golds=0, n_leps=0, max_episode_steps=100
     ):
@@ -105,21 +105,21 @@ class MiniHackGoldRoom(MiniHack):
         self.stair_coord = self._set_stair_position(level_generator=level_generator, x=stair_coord[0], y=stair_coord[1])
         self.gold_coords = [self._add_gold(level_generator=level_generator, x=x, y=y) for x, y in gold_coords]
         self.leprechaun_coords = [self._add_leprechaun(level_generator=level_generator, x=x, y=y) for x, y in leprechaun_coords]
+        self.matrix_map = None
+        self.pixel = None
+        self.message = None
+        self.gold_picked = False
         
         reward_manager = RewardManager()
 
         def my_reward_function(env:MiniHackGoldRoom, previous_observation: Any, action: int, current_obsetrvation: Any) -> float:
-            reward = env.time_penalty
-            state = env.curr_state
-            env.agent_coord = tuple(np.array(env.agent_coord) + action_to_move(action=action))
+            reward = env.time_penalty * np.linalg.norm(action_to_move(action))
 
-            if 'Your purse feels lighter' in state['message']:
-                reward -= env.collected_gold #TODO
+            if 'Your purse feels lighter' in env.message:
+                reward -= env.collected_gold
             
-            elif env.agent_coord in env.gold_coords:
+            if env.gold_picked:
                 reward += env.gold_score
-                env.collected_gold += env.gold_score
-                env.gold_coords.remove(env.agent_coord)
             
             if env.agent_coord == env.stair_coord:
                 reward += env.stair_score
@@ -163,79 +163,98 @@ class MiniHackGoldRoom(MiniHack):
             )
 
     def myreset(self):
+        minihack_state = self.reset()
+        non_empty_rows = ~np.all(minihack_state['chars'] == 32, axis=1)
+        non_empty_cols = ~np.all(minihack_state['chars'] == 32, axis=0)
+        self.matrix_map = minihack_state['chars'][non_empty_rows][:, non_empty_cols]
+        self.agent_coord = self._get_agent_coord()
+        self.gold_coords = self._get_gold_coords()
+        self.stair_coord = self._get_stair_coord()
+        self.pixel = minihack_state['pixel']
+        self.message = bytes(minihack_state['message']).decode('utf-8').rstrip('\x00')
+        self.instant += 1
+
         if self.agent_coord in self.gold_coords:
             reward = self.gold_score
             self.collected_gold += self.gold_score
             self.gold_coords.remove(self.agent_coord)
         else:
-            reward = 0
-        self.instant += 1
-        self.curr_state = self._state_rapr(minihack_state=self.reset())
-        print(f'my coords: {self.agent_coord}\nits coords: {self.get_agent_coords()}')
-        return self.curr_state, reward
+            reward = 0.0
+        
+        return self.state(), reward
 
 
     def mystep(self, action: int):
-        state, reward, done, info = self.step(action)
         self.instant += 1
-        self.curr_state = self._state_rapr(minihack_state=state)
-        return self.curr_state, reward, done#, info
+        self.agent_coord = tuple(np.array(self.agent_coord) + action_to_move(action=action))
+        if self.agent_coord in self.gold_coords:
+            self.collected_gold += self.gold_score
+            self.gold_coords.remove(self.agent_coord)
+            self.gold_picked = True
 
+        minihack_state, reward, done, info = self.step(action)
 
-    def _agent_idxs(self):
-        x, y = np.where(self.curr_state['map'] == AGENT_CHAR)
-        return x[0], y[0]
+        self.gold_picked = False
+
+        non_empty_rows = ~np.all(minihack_state['chars'] == 32, axis=1)
+        non_empty_cols = ~np.all(minihack_state['chars'] == 32, axis=0)
+        self.matrix_map = minihack_state['chars'][non_empty_rows][:, non_empty_cols]
+        self.pixel = minihack_state['pixel']
+        self.message = bytes(minihack_state['message']).decode('utf-8').rstrip('\x00')
     
-    def get_agent_idxs(self):
-        return np.where(self.curr_state['map'] == AGENT_CHAR)
-    
-    def get_stair_idxs(self):
-        x, y = self.stair_coord
-        return y - self.height + 1, x
+        return self.state(), reward, done#, info
 
-    def get_agent_coords(self):
-        x, y = np.where(self.curr_state['map'] == AGENT_CHAR)
+
+    #def _agent_idxs(self):
+    #    x, y = np.where(self.curr_state['map'] == AGENT_CHAR)
+    #    return x[0], y[0]
+    #
+    #def _get_agent_idxs(self):
+    #    return np.where(self.curr_state['map'] == AGENT_CHAR)
+    #
+    #def _get_stair_idxs(self):
+    #    x, y = self.stair_coord
+    #    return y - self.height + 1, x
+    
+    def _get_agent_coord(self):
+        x, y = np.where(self.matrix_map == AGENT_CHAR)
         return y[0], self.height - x[0] - 1
-    #    return self.agent_coords
     
     def get_leprechaun_coords(self): #TBR
-        rows, cols = np.where(self.curr_state['map'] == LEPRECHAUN_CHAR)
+        rows, cols = np.where(self.matrix_map == LEPRECHAUN_CHAR)
         coords = [(col, self.height - row - 1) for row, col in zip(rows, cols)]
         return coords
     
-    #def get_gold_coords(self):
-    #    #rows, cols = np.where(self.curr_state['map'] == GOLD_CHAR)
-    #    #coords = [(col, self.height - row - 1) for row, col in zip(rows, cols)]
-    #    #return coords
-    #    return self.gold_coordss
+    def _get_gold_coords(self):
+        rows, cols = np.where(self.matrix_map == GOLD_CHAR)
+        coords = [(col, self.height - row - 1) for row, col in zip(rows, cols)]
+        return coords
     
-    #def get_stair_coords(self):
-    #    return self.stair_coords
+    def _get_stair_coord(self):
+        x, y = np.where(self.matrix_map == STAIR_CHAR)
+        return y[0], self.height - x[0] - 1
 
-    def _state_rapr(self, minihack_state):
-        stats = minihack_state['blstats']
+    def state(self):
+        #stats = minihack_state['blstats']
         #stats_dict = {
         #    'health': stats[HEALTH],
         #    'gold': stats[GOLD],
         #    'time': stats[TIME],
         #    'carrying_capacity': stats[CARRYING_CAPACITY]
         #}
-        non_empty_rows = ~np.all(minihack_state['chars'] == 32, axis=1)
-        non_empty_cols = ~np.all(minihack_state['chars'] == 32, axis=0)
-        matrix_map = minihack_state['chars'][non_empty_rows][:, non_empty_cols]
-        mystate = {
+        env_state = {
             #'health': stats[HEALTH],
             'gold': self.collected_gold,#stats[GOLD],
             'time': self.instant,#stats[TIME],
-            'carrying_capacity': stats[CARRYING_CAPACITY],
+            #'carrying_capacity': stats[CARRYING_CAPACITY],
             'agent_coord': self.agent_coord,
             'stair_coord': self.stair_coord,
             'gold_coords': self.gold_coords,
-            'map': matrix_map,
-            'pixel': minihack_state['pixel'],
-            'message': bytes(minihack_state['message']).decode('utf-8').rstrip('\x00')
+            'map': self.matrix_map,
+            'pixel': self.pixel,
+            'message': self.message
         }
-        return mystate
+        return env_state
 
 
     def _add_leprechaun(self, level_generator, x, y):
@@ -288,14 +307,21 @@ class MiniHackGoldRoom(MiniHack):
     def _set_stair_position(self, level_generator, x=-1, y=-1):
         col_idx = x
         row_idx = self.height - y - 1
+        
         if x < 0:
             col_idx = random.randint(0, self.width-1)
+
         elif x >= self.width:
             raise IndexError('x out of bound')
+
         if y < 0:
             row_idx = random.randint(0, self.height-1)
+            while row_idx == self.height - self.start_coord[1] - 1:
+                row_idx = random.randint(0, self.height-1)
+
         elif y >= self.height:
             raise IndexError('y out of bound')
+
         level_generator.add_goal_pos((int(col_idx), int(row_idx)))
         x = col_idx
         y = self.height - row_idx - 1
