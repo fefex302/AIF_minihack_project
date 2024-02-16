@@ -30,6 +30,51 @@ DIAGONAL_ACTIONS = [NE, SE, SW, NW]
 ACTION_NAMES = ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW']
 
 
+class AllowedMovesFunction:
+
+    def __init__(self):
+        pass
+
+    def __call__(self, state: dict):
+        pass
+
+
+class AllowedSimpleMovesFunction(AllowedMovesFunction):
+
+    def __init__(
+        self,
+        width: int = None,
+        height: int = None,
+        to_avoid: Tuple[int, int] = None
+        ):
+
+        self.width = width
+        self.height = height
+        self.to_avoid = to_avoid
+    
+    def __call__(self, state: dict) -> List[np.ndarray[int]]:
+        return allowed_moves(
+            width=self.width,
+            height=self.height,
+            agent_coord=state['agent_coord'],
+            to_avoid=self.to_avoid
+        )
+
+
+class AllowedCompositeMovesFunction(AllowedMovesFunction):
+
+    def __init__(self):
+        pass
+    
+    def __call__(self, state: dict) -> List[np.ndarray[int]]:
+        return \
+            [np.array(state['stair_coord']) - np.array(state['agent_coord'])]\
+                + [np.array(g_coord) - np.array(state['agent_coord']) for g_coord in state['gold_coords'] if state['agent_coord'] != g_coord]
+
+ALLOWED_SIMPLE_MOVES = AllowedSimpleMovesFunction()
+ALLOWED_COMPOSITE_MOVES = AllowedCompositeMovesFunction()
+
+
 def move_to_action(move: np.ndarray[int]) -> List[int]:
     if np.array_equal(move, N_ARR):
         return N

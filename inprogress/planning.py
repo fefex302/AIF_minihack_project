@@ -1,61 +1,12 @@
-import time
-import matplotlib.pyplot as plt
 import random
 import numpy as np
 from queue import PriorityQueue
 from gold_room_env import MiniHackGoldRoom
-from utils import action_to_string, action_to_move, move_to_action, allowed_moves, is_composite
+from utils import action_to_string, action_to_move, move_to_action, allowed_moves, is_composite, AllowedMovesFunction, AllowedSimpleMovesFunction, ALLOWED_SIMPLE_MOVES
 from typing import Callable, Tuple, List
 import gym
-from enum import Enum
 
-
-class AllowedMovesFunction:
-
-    def __init__(self):
-        pass
-
-    def __call__(self, state: dict):
-        pass
-
-
-class AllowedSimpleMovesFunction(AllowedMovesFunction):
-
-    def __init__(
-        self,
-        width: int = None,
-        height: int = None,
-        to_avoid: Tuple[int, int] = None
-        ):
-
-        self.width = width
-        self.height = height
-        self.to_avoid = to_avoid
-    
-    def __call__(self, state: dict) -> List[np.ndarray[int]]:
-        return allowed_moves(
-            width=self.width,
-            height=self.height,
-            agent_coord=state['agent_coord'],
-            to_avoid=self.to_avoid
-        )
-
-
-class AllowedCompositeMovesFunction(AllowedMovesFunction):
-
-    def __init__(self):
-        pass
-    
-    def __call__(self, state: dict) -> List[np.ndarray[int]]:
-        return \
-            [np.array(state['stair_coord']) - np.array(state['agent_coord'])]\
-                + [np.array(g_coord) - np.array(state['agent_coord']) for g_coord in state['gold_coords'] if state['agent_coord'] != g_coord]
-
-ALLOWED_SIMPLE_MOVES = AllowedSimpleMovesFunction()
-ALLOWED_COMPOSITE_MOVES = AllowedCompositeMovesFunction()
-
-
-class Plan():
+class Plan:
     def __init__(self):
         self.path = []
         self.action_sequence = []
@@ -70,9 +21,12 @@ class Plan():
             actual_coords -= move
             self.path.insert(0, tuple(actual_coords))
     
-    def show(self) -> None:
+    def show(self, env: MiniHackGoldRoom) -> None:
         print(f'Path: {self.path}')
         print(f'Actions: {[action_to_string(action) for action in self.action_sequence]}')
+        total_score = sum([np.linalg.norm(action_to_move(action)) * env.time_penalty for action in self.action_sequence]) + env.gold_score * len([coord for coord in env.gold_coords if coord in self.path])
+        print(f'Total score: {round(total_score, 3)}')
+
 
     
 class State:
@@ -144,7 +98,8 @@ class GFunction:
         time_penalty: float = None,
         stair_score: float = None,
         prev_state: State = None,
-        prev_g: float = 0.0
+        prev_g: float = 0.0,
+        f: Callable[State, float] = None
         ):
 
         self.gold_score = gold_score
@@ -152,8 +107,11 @@ class GFunction:
         self.stair_score = stair_score
         self.prev_state = prev_state
         self.prev_g = prev_g
+        self.f = f
     
     def __call__(self, state: State) -> float:
+        if self.f != None:
+            return self.f(state=state)
         return self._g(state=state)
     
     def _g(self, state: State) -> float:
@@ -168,6 +126,7 @@ class GFunction:
         self.stair_score = env.stair_score
 
 
+
 class HFunction:
     def __init__(
         self,
@@ -175,7 +134,7 @@ class HFunction:
         time_penalty: float = None,
         stair_score: float = None,
         f: Callable[State, float] = None
-        ):
+    ):
 
         self.gold_score = gold_score
         self.time_penalty = time_penalty
@@ -215,7 +174,7 @@ def a_star_search(
     g: GFunction = None,
     h: HFunction = None,
     allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
-    ) -> Tuple[Plan, int]:
+) -> Tuple[Plan, int]:
 
     if not isinstance(allowed_moves_function, AllowedMovesFunction):
         raise ValueError('Parameter allowed_moves_function must be of type AllowedMovesFunction')
@@ -228,11 +187,11 @@ def a_star_search(
         g = GFunction()
     if h == None:
         h = HFunction()
+    
+    _, init_g = env.myreset()
 
     g.set_for_env(env=env)
     h.set_for_env(env=env)
-    
-    _, init_g = env.myreset()
 
     init_state = State(
         agent_coord=env.agent_coord,
@@ -251,6 +210,9 @@ def a_star_search(
     expanded_nodes = set()
     nodes_queue = PriorityQueue()
     nodes_queue.put(init_node)
+
+    support_dict = {}
+    support_dict[init_node] = init_g
 
     additional_expanded_nodes = 0
 
@@ -334,13 +296,15 @@ def a_star_search(
                     reachable_node = Node(
                         state = reachable_state,
                         g_value = path_score,
-                        priority = path_score + h(reachable_state),
                         parent = node,
                         action = subplan.action_sequence
                     )
 
                     if reachable_node not in expanded_nodes:
-                        nodes_queue.put(reachable_node)
+                        if reachable_node not in support_dict.keys() or (reachable_node in support_dict.keys() and reachable_node.g_value > support_dict[reachable_node]):
+                            reachable_node.priority = reachable_node.g_value + h(reachable_state)
+                            nodes_queue.put(reachable_node)
+                            support_dict[reachable_node] = reachable_node.g_value
 
             else:
                 reachable_state = State(
@@ -352,13 +316,15 @@ def a_star_search(
                 reachable_node = Node(
                     state = reachable_state,
                     g_value = g(reachable_state),
-                    priority = g(reachable_state) + h(reachable_state),
                     parent = node,
                     action = [move_to_action(move)]
                 )
 
                 if reachable_node not in expanded_nodes:
-                        nodes_queue.put(reachable_node)
+                    if reachable_node not in support_dict.keys() or (reachable_node in support_dict.keys() and reachable_node.g_value > support_dict[reachable_node]):
+                            reachable_node.priority = reachable_node.g_value + h(reachable_state)
+                            nodes_queue.put(reachable_node)
+                            support_dict[reachable_node] = reachable_node.g_value
 
     plan = Plan()
     node = final_node
@@ -372,46 +338,18 @@ def a_star_search(
 def uniform_cost_search(
     env: MiniHackGoldRoom,
     allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
-    ) -> Tuple[Plan, int]:
+) -> Tuple[Plan, int]:
 
+    
     return a_star_search(env=env, h=HFunction(f=lambda state: 0), allowed_moves_function=allowed_moves_function)
 
 
-#def hill_climbing(
-#    env: MiniHackGoldRoom,
-#    allowed_moves_function: AllowedMovesFunction, #TODO: adapt tp CompositeMoves
-#    value_function: Callable[Node, float]
-#    ) -> Tuple[Plan, int]:
-#
-#    if isinstance(allowed_moves_function, AllowedSimpleMovesFunction):
-#        allowed_moves_function.width = env.width
-#        allowed_moves_function.height = env.height 
-#
-#    _, init_g = env.myreset()
-#    
-#    init_state = State(
-#        agent_coord=env.agent_coord,
-#        gold_coords=env.gold_coords,
-#        stair_coord=env.stair_coord
-#    )
-#
-#    init_node = Node(
-#        state = init_state,
-#        g_value = init_g,
-#        parent = None,
-#        action=[]
-#    )
-#
-#    node_value = value_function(init_node)
-#
-#    stair_reached = (init_node.state.agent_coord == init_node.state.stair_coord)
-#    only_worse_reachable_states = False
-#    for _ in range(0, env.max_episode_steps):
-#        if stair_reached or only_worse_reachable_states:
-#            break
-#        state, reward, stair_reached, info = env.mystep(action=N)
-#        print(state['time'])
-#        print(state['gold'])
+def greedy_search(
+    env: MiniHackGoldRoom,
+    allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
+) -> Tuple[Plan, int]:
+
+    return a_star_search(env=env, g=GFunction(f=lambda state: 0))
 
 
 def random_search(

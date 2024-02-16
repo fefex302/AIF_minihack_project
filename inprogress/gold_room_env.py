@@ -274,13 +274,13 @@ class MiniHackGoldRoom(MiniHack):
             )
 
     # Reset the environment  -------------------------------------------------------------------------------------------
-    def myreset(self):
+    def myreset(self) -> Tuple[dict, float]:
         minihack_state = self.reset()
         non_empty_rows = ~np.all(minihack_state['chars'] == 32, axis=1)
         non_empty_cols = ~np.all(minihack_state['chars'] == 32, axis=0)
         self.matrix_map = minihack_state['chars'][non_empty_rows][:, non_empty_cols]
         self.agent_coord = self._get_agent_coord()
-        self.gold_coords = self._get_gold_coords()
+        self.gold_coords = self.get_gold_coords()
         #self.stair_coord = self._get_stair_coord()
         self.pixel = minihack_state['pixel']
         self.message = bytes(minihack_state['message']).decode('utf-8').rstrip('\x00')
@@ -296,10 +296,10 @@ class MiniHackGoldRoom(MiniHack):
         return self.state(), reward
 
     # Perform a step in the environment --------------------------------------------------------------------------------
-    def mystep(self, action: int):
+    def mystep(self, action: int) -> Tuple[dict, float, bool]:
         self.instant += 1
         self.agent_coord = tuple(np.array(self.agent_coord) + action_to_move(action=action))
-        if self.agent_coord in self.gold_coords:
+        if self.agent_coord in self.gold_coords:#TBR TODO: lep
             self.collected_gold += self.gold_score
             self.gold_coords.remove(self.agent_coord)
             self.gold_picked = True
@@ -337,7 +337,7 @@ class MiniHackGoldRoom(MiniHack):
         coords = [(col, self.height - row - 1) for row, col in zip(rows, cols)]
         return coords
     
-    def _get_gold_coords(self):
+    def get_gold_coords(self):
         rows, cols = np.where(self.matrix_map == GOLD_CHAR)
         coords = [(col, self.height - row - 1) for row, col in zip(rows, cols)]
         return coords
