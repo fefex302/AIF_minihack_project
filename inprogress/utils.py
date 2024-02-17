@@ -45,7 +45,7 @@ class AllowedSimpleMovesFunction(AllowedMovesFunction):
         self,
         width: int = None,
         height: int = None,
-        to_avoid: Tuple[int, int] = None
+        to_avoid: List[Tuple[int, int]] = []
         ):
 
         self.width = width
@@ -56,7 +56,7 @@ class AllowedSimpleMovesFunction(AllowedMovesFunction):
         return allowed_moves(
             width=self.width,
             height=self.height,
-            agent_coord=state['agent_coord'],
+            state=state,
             to_avoid=self.to_avoid
         )
 
@@ -68,7 +68,7 @@ class AllowedCompositeMovesFunction(AllowedMovesFunction):
     
     def __call__(self, state: dict) -> List[np.ndarray[int]]:
         return \
-            [np.array(state['stair_coord']) - np.array(state['agent_coord'])]\
+            [np.array(state['stair_coord']) - np.array(state['agent_coord'])] \
                 + [np.array(g_coord) - np.array(state['agent_coord']) for g_coord in state['gold_coords'] if state['agent_coord'] != g_coord]
 
 ALLOWED_SIMPLE_MOVES = AllowedSimpleMovesFunction()
@@ -127,8 +127,8 @@ def show_episode(states: dict, clear_output: bool = True) -> None:
         time.sleep(0.3)
 
 
-def allowed_moves(width: int, height: int, agent_coord: Tuple[int, int], to_avoid: Tuple[int, int] = None) -> List[np.ndarray[int]]:
-    x, y = agent_coord
+def allowed_moves(width: int, height: int, state: dict, to_avoid: List[Tuple[int, int]] = []) -> List[np.ndarray[int]]:
+    x, y = state['agent_coord']
     n = 0b1000
     s = 0b0100
     w = 0b0010
@@ -159,7 +159,7 @@ def allowed_moves(width: int, height: int, agent_coord: Tuple[int, int], to_avoi
         moves.append(SW_ARR)
     if b & (s | e) == se:
         moves.append(SE_ARR)
-    moves = [m for m in moves if tuple(np.array(agent_coord) + m) != to_avoid]
+    moves = [m for m in moves if tuple(np.array(state['agent_coord']) + m) not in (to_avoid + state['leprechaun_coords'])]
 
     return moves
 

@@ -56,7 +56,8 @@ class State:
         return {
             'agent_coord': self.agent_coord,
             'stair_coord': self.stair_coord,
-            'gold_coords': self.gold_coords
+            'gold_coords': self.gold_coords,
+            'leprechaun_coords': []
             }
 
 
@@ -261,9 +262,9 @@ def a_star_search(
 
                     in_stair = (env2.stair_coord == env.stair_coord)
                     if in_stair:
-                        to_avoid = None
+                        to_avoid = []
                     else:
-                        to_avoid = env.stair_coord
+                        to_avoid = [env.stair_coord]
                     
                     sub_allowed_moves_function = AllowedSimpleMovesFunction(
                         width=env2.width,
