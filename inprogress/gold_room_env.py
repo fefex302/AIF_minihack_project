@@ -223,7 +223,7 @@ class MiniHackGoldRoom(MiniHack):
             reward = env.time_penalty * np.linalg.norm(action_to_move(action))
 
             current_message = bytes(current_observation[env._original_observation_keys.index('message')]).decode('utf-8').rstrip('\x00')
-            print(current_message)
+            #print(current_message)
 
             current_map = current_observation[env._original_observation_keys.index('chars')]
             non_empty_rows = ~np.all(current_map == 32, axis=1)
@@ -383,3 +383,16 @@ class MiniHackGoldRoom(MiniHack):
         col_idx = x
         row_idx = self.height - y - 1
         return int(col_idx), int(row_idx)
+
+    
+    def to_dict(self):
+        return {
+            'height': self.height,
+            'width': self.width,
+            'time_penalty': self.time_penalty,
+            'gold_score': self.gold_score,
+            'stair_score': self.stair_score,
+            'agent_coord': self.agent_coord,
+            'stair_coord': self.stair_coord,
+            'gold_coords': self.gold_coords
+        }

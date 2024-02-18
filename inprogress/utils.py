@@ -169,3 +169,46 @@ def is_composite(move: np.ndarray[int]) -> bool:
         if np.array_equal(move, m):
             return False
     return True
+
+
+def default_heuristic(state: dict, env: dict):
+    agent_stair_dist = np.linalg.norm(np.array(state['agent_coord']) - np.array(state['stair_coord']))
+    actual_golds = [g for g in state['gold_coords'] if g != state['agent_coord'] and g != state['stair_coord']]
+    gold_in_stair = (state['stair_coord'] in state['gold_coords'])
+    n_golds = len(actual_golds)
+    if agent_stair_dist == 0:
+        return 0
+    strategy1_score = env['time_penalty'] * agent_stair_dist + env['stair_score'] + env['gold_score'] * gold_in_stair
+    if n_golds == 0:
+        return strategy1_score
+    agent_gold_dists = [np.linalg.norm(np.array(state['agent_coord']) - np.array(gold_coords)) for gold_coords in actual_golds]
+    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coords)) for gold_coords in actual_golds]
+    path_lenghts = [ag + gs for ag, gs in zip(agent_gold_dists, gold_stair_dists)]
+    min_path_len = min(path_lenghts)
+    strategy2_score = env['time_penalty'] * (min(path_lenghts)) + env['gold_score'] * n_golds + env['stair_score'] + env['gold_score'] * gold_in_stair
+    return max([strategy1_score, strategy2_score])
+
+
+def default_score(curr_state: dict, prev_state: dict, env: dict, prev_g: float = 0.0) -> float:
+    return prev_g + \
+        env['gold_score'] * (curr_state['agent_coord'] in curr_state['gold_coords']) + \
+        env['stair_score'] * (curr_state['agent_coord'] == curr_state['stair_coord']) + \
+        env['time_penalty'] * np.linalg.norm(np.array(curr_state['agent_coord']) - np.array(prev_state['agent_coord']))
+
+
+def scaled_default_heuristic(state: dict, env: dict):
+    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in env['gold_coords']]
+    agent_stair_dist = np.linalg.norm(np.array(state['agent_coord']) - np.array(state['stair_coord']))
+    max_h_value = max(
+        env['time_penalty'] + env['time_penalty'] * max(gold_stair_dists) + env['gold_score'] * len(env['gold_coords']) + env['stair_score'], \
+            env['time_penalty'] * agent_stair_dist + env['stair_score']
+        )
+    vertices = [(0, 0), (0, env['height'] - 1), (env['width'] - 1, 0), (env['width'] - 1, env['height'] - 1)]
+    min_h_value = env['time_penalty'] * max([np.linalg.norm(np.array(env['stair_coord']) - np.array(v)) for v in vertices])
+    return (default_heuristic(state=state, env=env) - min_h_value) / (max_h_value - min_h_value)
+
+
+def scaled_default_score(curr_state: dict, prev_state: dict, env: dict, prev_g: float = 0.0):
+    max_g_value = env['time_penalty'] + env['gold_score'] + env['stair_score']
+    min_g_value = env['time_penalty']
+    return (default_score(curr_state=curr_state, prev_state=prev_state, env=env, prev_g=prev_g) - min_g_value) / (max_g_value - min_g_value)

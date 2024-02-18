@@ -119,7 +119,7 @@ class GFunction:
         return self.prev_g + \
             self.gold_score * (state.agent_coord in state.gold_coords) + \
             self.stair_score * (state.agent_coord == state.stair_coord) + \
-            self.time_penalty * np.linalg.norm(np.array(state.agent_coord) - np.array(self.prev_state.agent_coord))
+            self.time_penalty * np.linalg.norm(np.array(state.agent_coord) - np.array(self.prev_state.agent_coord))#TODO
     
     def set_for_env(self, env: MiniHackGoldRoom):
         self.gold_score = env.gold_score
@@ -148,6 +148,12 @@ class HFunction:
         return self._h(state=state)
 
     def _h(self, state: State) -> float:
+        #return default_heuristic(
+        #    state=state.to_dict(),
+        #    time_penalty=self.time_penalty,
+        #    stair_score=self.stair_score,
+        #    gold_score=self.gold_score
+        #    )
         agent_stair_dist = np.linalg.norm(np.array(state.agent_coord) - np.array(state.stair_coord))
         actual_golds = [g for g in state.gold_coords if g != state.agent_coord and g != state.stair_coord]
         gold_in_stair = (state.stair_coord in state.gold_coords)
