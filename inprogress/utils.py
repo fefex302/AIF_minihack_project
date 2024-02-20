@@ -197,8 +197,10 @@ def default_score(curr_state: dict, prev_state: dict, env: dict, prev_g: float =
 
 
 def scaled_default_heuristic(state: dict, env: dict):
-    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in env['gold_coords']]
     agent_stair_dist = np.linalg.norm(np.array(state['agent_coord']) - np.array(state['stair_coord']))
+    if state['gold_coords'] == []:
+        return env['time_penalty'] * agent_stair_dist + env['stair_score']
+    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in env['gold_coords']]
     max_h_value = max(
         env['time_penalty'] + env['time_penalty'] * max(gold_stair_dists) + env['gold_score'] * len(env['gold_coords']) + env['stair_score'], \
             env['time_penalty'] * agent_stair_dist + env['stair_score']

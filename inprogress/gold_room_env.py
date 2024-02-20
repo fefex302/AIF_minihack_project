@@ -120,9 +120,13 @@ class MiniHackGoldRoom(MiniHack):
 
         if n_golds < 0:
             raise RuntimeError(f'Invalid argument n_stairs = {n_golds}')
+        elif n_golds > width * height:
+            raise RuntimeError(f'Too many golds ({n_golds}) for a {width}x{height} grid')
 
         if n_leps < 0:
             raise RuntimeError(f'Invalid argument n_stairs = {n_leps}')
+        elif n_leps > width * height - 2:
+            raise RuntimeError(f'Too many leprechauns ({n_leps}) for a {width}x{height} grid')
         
         if agent_coord != None:
             x, y = agent_coord
@@ -153,6 +157,8 @@ class MiniHackGoldRoom(MiniHack):
                 seen.add((x, y))
             if duplicate:
                 warnings.warn(f'Multiple gold items in the same position: only one added', Warning)
+            if len(gold_coords) > width * height:
+                raise RuntimeError(f'Too many golds ({len(gold_coords)}) for a {width}x{height} grid')
         
         if leprechaun_coords != None:
             for (x, y) in leprechaun_coords:
@@ -160,6 +166,8 @@ class MiniHackGoldRoom(MiniHack):
                     raise RuntimeError(f'Leprechaun coordinate out of bound [0, {width}): x = {x}')
                 if y not in range(height):
                     raise RuntimeError(f'Leprechaun coordinate out of bound [0, {height}): y = {y}')
+            if len(leprechaun_coords) > width * height - 2:
+                raise RuntimeError(f'Too many leprechauns ({len(leprechaun_coords)}) for a {width}x{height} grid')
 
         # Set class variables -----------------------------------------------------------------
 
@@ -339,6 +347,9 @@ class MiniHackGoldRoom(MiniHack):
         if env_map is None:
             env_map = self.matrix_map
         x, y = np.where(env_map == AGENT_CHAR)
+        #if list(x) == [] and list(y) == []:
+        #    print('Hidden agent')
+        #    return self.agent_coord
         return y[0], self.height - x[0] - 1
     
 
