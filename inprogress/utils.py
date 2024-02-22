@@ -189,11 +189,11 @@ def default_heuristic(state: dict, env: dict):
     return max([strategy1_score, strategy2_score])
 
 
-def default_score(curr_state: dict, prev_state: dict, env: dict, prev_g: float = 0.0) -> float:
+def default_score(next_state: dict, curr_state: dict, env: dict, prev_g: float = 0.0) -> float:
     return prev_g + \
-        env['gold_score'] * (curr_state['agent_coord'] in curr_state['gold_coords']) + \
-        env['stair_score'] * (curr_state['agent_coord'] == curr_state['stair_coord']) + \
-        env['time_penalty'] * np.linalg.norm(np.array(curr_state['agent_coord']) - np.array(prev_state['agent_coord']))
+        env['gold_score'] * (next_state['agent_coord'] in next_state['gold_coords']) + \
+        env['stair_score'] * (next_state['agent_coord'] == next_state['stair_coord']) + \
+        env['time_penalty'] * np.linalg.norm(np.array(next_state['agent_coord']) - np.array(curr_state['agent_coord']))
 
 
 def scaled_default_heuristic(state: dict, env: dict):
@@ -202,7 +202,7 @@ def scaled_default_heuristic(state: dict, env: dict):
         return env['time_penalty'] * agent_stair_dist + env['stair_score']
     gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in env['gold_coords']]
     max_h_value = max(
-        env['time_penalty'] + env['time_penalty'] * max(gold_stair_dists) + env['gold_score'] * len(env['gold_coords']) + env['stair_score'], \
+        env['time_penalty'] + env['time_penalty'] * min(gold_stair_dists) + env['gold_score'] * len(env['gold_coords']) + env['stair_score'], \
             env['time_penalty'] * agent_stair_dist + env['stair_score']
         )
     vertices = [(0, 0), (0, env['height'] - 1), (env['width'] - 1, 0), (env['width'] - 1, env['height'] - 1)]
@@ -210,7 +210,15 @@ def scaled_default_heuristic(state: dict, env: dict):
     return (default_heuristic(state=state, env=env) - min_h_value) / (max_h_value - min_h_value)
 
 
-def scaled_default_score(curr_state: dict, prev_state: dict, env: dict, prev_g: float = 0.0):
+def scaled_default_score(next_state: dict, curr_state: dict, env: dict, prev_g: float = 0.0) -> float:
     max_g_value = env['time_penalty'] + env['gold_score'] + env['stair_score']
     min_g_value = env['time_penalty']
-    return (default_score(curr_state=curr_state, prev_state=prev_state, env=env, prev_g=prev_g) - min_g_value) / (max_g_value - min_g_value)
+    return (default_score(next_state=next_state, curr_state=curr_state, env=env, prev_g=prev_g) - min_g_value) / (max_g_value - min_g_value)
+
+
+def scaled_score2(next_state: dict, curr_state: dict, env: dict, prev_g: float = 0.0) -> float:
+    max_g_value = env['time_penalty'] + env['gold_score'] + env['stair_score']
+    min_g_value = env['time_penalty']
+    mod_state = next_state
+    mod_state['gold_coords'] = [coord for coord in next_state['gold_coords'] if coord != next_state['agent_coord']]
+    return (default_score(next_state=mod_state, curr_state=curr_state, env=env, prev_g=prev_g) - min_g_value) / (max_g_value - min_g_value)
