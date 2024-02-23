@@ -181,16 +181,16 @@ def default_heuristic(state: dict, env: dict):
     strategy1_score = env['time_penalty'] * agent_stair_dist + env['stair_score'] + env['gold_score'] * gold_in_stair
     if n_golds == 0:
         return strategy1_score
-    agent_gold_dists = [np.linalg.norm(np.array(state['agent_coord']) - np.array(gold_coords)) for gold_coords in actual_golds]
-    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coords)) for gold_coords in actual_golds]
+    agent_gold_dists = [np.linalg.norm(np.array(state['agent_coord']) - np.array(gold_coord)) for gold_coord in actual_golds]
+    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in actual_golds]
     path_lenghts = [ag + gs for ag, gs in zip(agent_gold_dists, gold_stair_dists)]
     min_path_len = min(path_lenghts)
     strategy2_score = env['time_penalty'] * (min(path_lenghts)) + env['gold_score'] * n_golds + env['stair_score'] + env['gold_score'] * gold_in_stair
     return max([strategy1_score, strategy2_score])
 
 
-def default_score(next_state: dict, curr_state: dict, env: dict, prev_g: float = 0.0) -> float:
-    return prev_g + \
+def default_score(next_state: dict, curr_state: dict, env: dict, curr_g: float = 0.0) -> float:
+    return curr_g + \
         env['gold_score'] * (next_state['agent_coord'] in next_state['gold_coords']) + \
         env['stair_score'] * (next_state['agent_coord'] == next_state['stair_coord']) + \
         env['time_penalty'] * np.linalg.norm(np.array(next_state['agent_coord']) - np.array(curr_state['agent_coord']))

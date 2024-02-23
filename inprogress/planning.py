@@ -2,7 +2,7 @@ import random
 import numpy as np
 from queue import PriorityQueue
 from gold_room_env import MiniHackGoldRoom
-from utils import action_to_string, action_to_move, move_to_action, allowed_moves, is_composite, AllowedMovesFunction, AllowedSimpleMovesFunction, ALLOWED_SIMPLE_MOVES
+from utils import action_to_string, action_to_move, move_to_action, allowed_moves, is_composite, AllowedMovesFunction, AllowedSimpleMovesFunction, ALLOWED_SIMPLE_MOVES, default_heuristic, default_score
 from typing import Callable, Tuple, List
 import gym
 
@@ -92,94 +92,10 @@ class Node:
         return hash(self.state)
 
 
-class GFunction:
-    def __init__(
-        self,
-        gold_score: float = None,
-        time_penalty: float = None,
-        stair_score: float = None,
-        prev_state: State = None,
-        prev_g: float = 0.0,
-        f: Callable[State, float] = None
-        ):
-
-        self.gold_score = gold_score
-        self.time_penalty = time_penalty
-        self.stair_score = stair_score
-        self.prev_state = prev_state
-        self.prev_g = prev_g
-        self.f = f
-    
-    def __call__(self, state: State) -> float:
-        if self.f != None:
-            return self.f(state=state)
-        return self._g(state=state)
-    
-    def _g(self, state: State) -> float:
-        return self.prev_g + \
-            self.gold_score * (state.agent_coord in state.gold_coords) + \
-            self.stair_score * (state.agent_coord == state.stair_coord) + \
-            self.time_penalty * np.linalg.norm(np.array(state.agent_coord) - np.array(self.prev_state.agent_coord))#TODO
-    
-    def set_for_env(self, env: MiniHackGoldRoom):
-        self.gold_score = env.gold_score
-        self.time_penalty = env.time_penalty
-        self.stair_score = env.stair_score
-
-
-
-class HFunction:
-    def __init__(
-        self,
-        gold_score: float = None,
-        time_penalty: float = None,
-        stair_score: float = None,
-        f: Callable[State, float] = None
-    ):
-
-        self.gold_score = gold_score
-        self.time_penalty = time_penalty
-        self.stair_score = stair_score
-        self.f = f
-    
-    def __call__(self, state: State) -> float:
-        if self.f != None:
-            return self.f(state=state)
-        return self._h(state=state)
-
-    def _h(self, state: State) -> float:
-        #return default_heuristic(
-        #    state=state.to_dict(),
-        #    time_penalty=self.time_penalty,
-        #    stair_score=self.stair_score,
-        #    gold_score=self.gold_score
-        #    )
-        agent_stair_dist = np.linalg.norm(np.array(state.agent_coord) - np.array(state.stair_coord))
-        actual_golds = [g for g in state.gold_coords if g != state.agent_coord and g != state.stair_coord]
-        gold_in_stair = (state.stair_coord in state.gold_coords)
-        n_golds = len(actual_golds)
-        if agent_stair_dist == 0:
-            return 0
-        strategy1_score = self.time_penalty * agent_stair_dist + self.stair_score + self.gold_score * gold_in_stair
-        if n_golds == 0:
-            return strategy1_score
-        agent_gold_dists = [np.linalg.norm(np.array(state.agent_coord) - np.array(gold_coords)) for gold_coords in actual_golds]
-        gold_stair_dists = [np.linalg.norm(np.array(state.stair_coord) - np.array(gold_coords)) for gold_coords in actual_golds]
-        path_lenghts = [ag + gs for ag, gs in zip(agent_gold_dists, gold_stair_dists)]
-        min_path_len = min(path_lenghts)
-        strategy2_score = self.time_penalty * (min(path_lenghts)) + self.gold_score * n_golds + self.stair_score + self.gold_score * gold_in_stair
-        return max([strategy1_score, strategy2_score])
-
-    def set_for_env(self, env: MiniHackGoldRoom):
-        self.gold_score = env.gold_score
-        self.time_penalty = env.time_penalty
-        self.stair_score = env.stair_score
-
-
 def a_star_search(
     env: MiniHackGoldRoom,
-    g: GFunction = None,
-    h: HFunction = None,
+    g: Callable[[dict, dict, dict, float], float] = None,
+    h: Callable[[dict, dict], float] = None,
     allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
 ) -> Tuple[Plan, int]:
 
@@ -191,14 +107,11 @@ def a_star_search(
         allowed_moves_function.height = env.height
     
     if g == None:
-        g = GFunction()
+        g = lambda next_state, curr_state, curr_g: default_score(next_state=next_state.to_dict(), curr_state=curr_state.to_dict(), env=env.to_dict(), curr_g=curr_g)
     if h == None:
-        h = HFunction()
+        h = lambda state: default_heuristic(state=state.to_dict(), env=env.to_dict())
     
     _, init_g = env.myreset()
-
-    g.set_for_env(env=env)
-    h.set_for_env(env=env)
 
     init_state = State(
         agent_coord=env.agent_coord,
@@ -209,7 +122,7 @@ def a_star_search(
     init_node = Node(
         state = init_state,
         g_value = init_g,
-        priority = init_g + h(init_state),
+        priority = init_g + h(state=init_state),
         parent = None,
         action=[]
     )
@@ -230,8 +143,7 @@ def a_star_search(
         if stair_reached:
             final_node = node
             break
-        g.prev_g = node.g_value
-        g.prev_state = node.state
+
         moves = allowed_moves_function(state=node.state.to_dict())
         reachable_points = [tuple(np.array(node.state.agent_coord) + move) for move in moves]
         actual_golds = [gold_coords for gold_coords in node.state.gold_coords if gold_coords != node.state.agent_coord]
@@ -247,8 +159,8 @@ def a_star_search(
 
                 reachable_node = Node(
                     state = reachable_state,
-                    g_value = g(reachable_state),
-                    priority = g(reachable_state) + h(reachable_state),
+                    g_value = g(next_state=reachable_state, curr_state=node.state, curr_g=node.g_value),
+                    priority = g(next_state=reachable_state, curr_state=node.state, curr_g=node.g_value) + h(state=reachable_state),
                     parent = node
                 )
                 
@@ -309,7 +221,7 @@ def a_star_search(
 
                     if reachable_node not in expanded_nodes:
                         if reachable_node not in support_dict.keys() or (reachable_node in support_dict.keys() and reachable_node.g_value > support_dict[reachable_node]):
-                            reachable_node.priority = reachable_node.g_value + h(reachable_state)
+                            reachable_node.priority = reachable_node.g_value + h(state=reachable_state)
                             nodes_queue.put(reachable_node)
                             support_dict[reachable_node] = reachable_node.g_value
 
@@ -322,14 +234,14 @@ def a_star_search(
 
                 reachable_node = Node(
                     state = reachable_state,
-                    g_value = g(reachable_state),
+                    g_value = g(next_state=reachable_state, curr_state=node.state, curr_g=node.g_value),
                     parent = node,
                     action = [move_to_action(move)]
                 )
 
                 if reachable_node not in expanded_nodes:
                     if reachable_node not in support_dict.keys() or (reachable_node in support_dict.keys() and reachable_node.g_value > support_dict[reachable_node]):
-                            reachable_node.priority = reachable_node.g_value + h(reachable_state)
+                            reachable_node.priority = reachable_node.g_value + h(state=reachable_state)
                             nodes_queue.put(reachable_node)
                             support_dict[reachable_node] = reachable_node.g_value
 
@@ -348,7 +260,7 @@ def uniform_cost_search(
 ) -> Tuple[Plan, int]:
 
     
-    return a_star_search(env=env, h=HFunction(f=lambda state: 0), allowed_moves_function=allowed_moves_function)
+    return a_star_search(env=env, h=(lambda state: 0), allowed_moves_function=allowed_moves_function)
 
 
 def greedy_search(
@@ -356,7 +268,7 @@ def greedy_search(
     allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
 ) -> Tuple[Plan, int]:
 
-    return a_star_search(env=env, g=GFunction(f=lambda state: 0))
+    return a_star_search(env=env, g=(lambda next_state, curr_state, curr_g: 0))
 
 
 def random_search(

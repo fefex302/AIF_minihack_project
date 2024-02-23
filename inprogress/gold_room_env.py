@@ -128,6 +128,9 @@ class MiniHackGoldRoom(MiniHack):
         elif n_leps > width * height - 2:
             raise RuntimeError(f'Too many leprechauns ({n_leps}) for a {width}x{height} grid')
         
+        if gold_score <= 0:
+            raise RuntimeError(f'Invalid argument gold_score = {gold_score} <= 0')
+        
         if agent_coord != None:
             x, y = agent_coord
             if x not in range(width):
