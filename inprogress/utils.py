@@ -142,13 +142,13 @@ def allowed_moves(width: int, height: int, state: dict, to_avoid: List[Tuple[int
     if x-1 >= 0:
         b |= w
         moves.append(W_ARR)
-    if x+1 < height:
+    if x+1 < width:
         b |= e
         moves.append(E_ARR)
     if y-1 >= 0:
         b |= s
         moves.append(S_ARR)
-    if y+1 < width:
+    if y+1 < height:
         b |= n
         moves.append(N_ARR)
     if b & (n | w) == nw:
@@ -189,11 +189,14 @@ def default_heuristic(state: dict, env: dict):
     return max([strategy1_score, strategy2_score])
 
 
-def default_score(next_state: dict, curr_state: dict, env: dict, curr_g: float = 0.0) -> float:
-    return curr_g + \
-        env['gold_score'] * (next_state['agent_coord'] in next_state['gold_coords']) + \
-        env['stair_score'] * (next_state['agent_coord'] == next_state['stair_coord']) + \
-        env['time_penalty'] * np.linalg.norm(np.array(next_state['agent_coord']) - np.array(curr_state['agent_coord']))
+def default_score(env: dict, next_state: dict, curr_state: dict = None, curr_g: float = 0.0) -> float:
+    if curr_state == None:
+        return curr_g + env['gold_score'] * (next_state['agent_coord'] in next_state['gold_coords'])
+    else:
+        return curr_g + \
+            env['gold_score'] * (next_state['agent_coord'] in next_state['gold_coords']) + \
+            env['stair_score'] * (next_state['agent_coord'] == next_state['stair_coord']) + \
+            env['time_penalty'] * np.linalg.norm(np.array(next_state['agent_coord']) - np.array(curr_state['agent_coord']))
 
 
 def scaled_default_heuristic(state: dict, env: dict):
