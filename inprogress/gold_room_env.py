@@ -234,7 +234,6 @@ class MiniHackGoldRoom(MiniHack):
             reward = env.time_penalty * np.linalg.norm(action_to_move(action))
 
             current_message = bytes(current_observation[env._original_observation_keys.index('message')]).decode('utf-8').rstrip('\x00')
-            #print(current_message)
 
             current_map = current_observation[env._original_observation_keys.index('chars')]
             non_empty_rows = ~np.all(current_map == 32, axis=1)
