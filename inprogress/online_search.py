@@ -92,8 +92,7 @@ def online_search_f(env: MiniHackGoldRoom, value_function: Callable[[dict, dict]
 #    return online_search_f(env=env, value_function=value_function, max_steps=max_steps, prob_rand_move=lambda t, curr_value, next_value: np.exp((curr_value - next_value) / (max_steps - t)))
 
 def online_greedy_search(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000):
-    states, rewards, done, i, _ = online_search_f(env=env, value_function=value_function, max_steps=max_steps)
-    return states, rewards, done, i
+    return online_search_f(env=env, value_function=value_function, max_steps=max_steps)
 
 def simulated_annealing(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000, temperature: Callable[[int, float, float], float] = None, k = 1):
     
@@ -116,14 +115,13 @@ def simulated_annealing(env: MiniHackGoldRoom, value_function: Callable[[dict, d
     
     return online_search_f(env=env, value_function=value_function, max_steps=max_steps, selection_policy=selection_policy, prob_move=prob_move)
 
-def online_random_greedy_search(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000, prob_rand_move: float = 0.5):
+def online_random_greedy_search(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000, prob_rand_move: float = 0.5, decay: float = 0):
 
     def selection_policy(values: List[float]) -> int:
         indexes = [i for i, value in enumerate(values)]
         return random.sample(population=indexes, k=1)[0]
     
     def prob_move(t, curr_value, next_value):
-        return prob_rand_move
+        return prob_rand_move * np.exp(-decay * t)
 
-    states, rewards, done, i, _ =  online_search_f(env=env, value_function=value_function, max_steps=max_steps, selection_policy=selection_policy, prob_move=prob_move, greedy_alternative=True)
-    return states, rewards, done, i
+    return online_search_f(env=env, value_function=value_function, max_steps=max_steps, selection_policy=selection_policy, prob_move=prob_move, greedy_alternative=True)

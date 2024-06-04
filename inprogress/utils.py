@@ -4,7 +4,10 @@ import IPython.display as display
 import random
 import numpy as np
 from queue import PriorityQueue
-from typing import List, Tuple
+from typing import List, Tuple, Callable
+
+import gym
+from tqdm import tqdm
 
 N_ARR = np.array([0, 1])
 S_ARR = np.array([0, -1])
@@ -184,8 +187,7 @@ def default_heuristic(state: dict, env: dict):
     agent_gold_dists = [np.linalg.norm(np.array(state['agent_coord']) - np.array(gold_coord)) for gold_coord in actual_golds]
     gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in actual_golds]
     path_lenghts = [ag + gs for ag, gs in zip(agent_gold_dists, gold_stair_dists)]
-    min_path_len = min(path_lenghts)
-    strategy2_score = env['time_penalty'] * (min(path_lenghts)) + env['gold_score'] * n_golds + env['stair_score'] + env['gold_score'] * gold_in_stair
+    strategy2_score = env['time_penalty'] * min(path_lenghts) + env['gold_score'] * n_golds + env['stair_score'] + env['gold_score'] * gold_in_stair
     return max([strategy1_score, strategy2_score])
 
 
@@ -203,19 +205,23 @@ def scaled_default_heuristic(state: dict, env: dict):
     agent_stair_dist = np.linalg.norm(np.array(state['agent_coord']) - np.array(state['stair_coord']))
     if state['gold_coords'] == []:
         return env['time_penalty'] * agent_stair_dist + env['stair_score']
-    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in env['gold_coords']]
+    gold_stair_dists = [np.linalg.norm(np.array(state['stair_coord']) - np.array(gold_coord)) for gold_coord in state['gold_coords']]
     max_h_value = max(
         env['time_penalty'] + env['time_penalty'] * min(gold_stair_dists) + env['gold_score'] * len(env['gold_coords']) + env['stair_score'], \
             env['time_penalty'] * agent_stair_dist + env['stair_score']
         )
     vertices = [(0, 0), (0, env['height'] - 1), (env['width'] - 1, 0), (env['width'] - 1, env['height'] - 1)]
     min_h_value = env['time_penalty'] * max([np.linalg.norm(np.array(env['stair_coord']) - np.array(v)) for v in vertices])
+    if max_h_value == min_h_value:
+        return 0
     return (default_heuristic(state=state, env=env) - min_h_value) / (max_h_value - min_h_value)
 
 
 def scaled_default_score(next_state: dict, curr_state: dict, env: dict, curr_g: float = 0.0) -> float:
     max_g_value = env['time_penalty'] + env['gold_score'] + env['stair_score']
     min_g_value = env['time_penalty']
+    if max_g_value == min_g_value:
+        return 0
     return (default_score(next_state=next_state, curr_state=curr_state, env=env, curr_g=curr_g) - min_g_value) / (max_g_value - min_g_value)
 
 
@@ -225,3 +231,120 @@ def scaled_default_score(next_state: dict, curr_state: dict, env: dict, curr_g: 
 #    mod_state = next_state
 #    mod_state['gold_coords'] = [coord for coord in next_state['gold_coords'] if coord != next_state['agent_coord']]
 #    return (default_score(next_state=mod_state, curr_state=curr_state, env=env, prev_g=prev_g) - min_g_value) / (max_g_value - min_g_value)
+
+def run_episodes(
+    widths: List[int],
+    heights: List[int],
+    n_golds: List[int],
+    n_leps: List[int],
+    gold_scores: List[float],
+    stair_scores: List[float],
+    time_penalties: List[float],
+    algorithms: List[Callable],
+    alg_paramss: List[List[dict]],
+    max_steps: int,
+    n_episodes: int,
+    return_states: bool = False
+    ) -> List[dict]:
+
+    episodes = []
+
+    for width, height in zip(widths, heights):
+        for time_penalty in tqdm(time_penalties, total=len(time_penalties), desc=f'Size: {width}x{height}'):
+            for gold_score in gold_scores:
+                for stair_score in stair_scores:
+                    for ng in n_golds:
+                        for nl in n_leps:
+                            init = {
+                                'width': width,
+                                'height': height,
+                                'n_golds': ng,
+                                'n_leps': nl,
+                                'gold_score': gold_score,
+                                'time_penalty': time_penalty
+                            }
+                            
+                            for search_algorithm, alg_params in zip(algorithms, alg_paramss):
+                                for kwargs in alg_params:#tqdm(alg_params, total=len(alg_params), desc=f'Size: {width}x{height}, Num golds: {ng}, Num leps: {nl}, Gold score: {gold_score}, Stair score: {stair_score}, Time penalty: {time_penalty}, Algorithm: {search_algorithm.__name__}'):
+                                    algorithm = {
+                                        'name': search_algorithm.__name__,
+                                        'params': kwargs
+                                    }
+
+                                    for _ in range(n_episodes):
+                                    
+                                        env = gym.make(
+                                            'MiniHack-MyTask-Custom-v0',
+                                            width=width,
+                                            height=height,
+                                            n_leps=nl,
+                                            n_golds=ng,
+                                            max_episode_steps=max_steps,
+                                            gold_score=gold_score,
+                                            stair_score=stair_score,
+                                            time_penalty=time_penalty
+                                            )
+                                        states, rewards, done, iters, steps = search_algorithm(env=env, max_steps=max_steps, **kwargs)
+                                        gold_thefts = [-gold_score for r in rewards if r < time_penalty]
+                                        gold_gains = [gold_score for r in rewards if r > time_penalty]
+                                        results = {
+                                            'rewards':rewards,
+                                            'steps': steps,
+                                            'iters': iters,
+                                            'gold_thefts': gold_thefts,
+                                            'gold_gains': gold_gains,
+                                            'done': done
+                                        }
+
+                                        if return_states:
+                                            results['states'] = states
+
+                                        episode = {
+                                            'init': init,
+                                            'algorithm': algorithm,
+                                            'results': results
+                                        }
+                                        episodes.append(episode)
+    return episodes
+
+
+def get_plot(
+    episodes: List[dict],
+    fixed: List[Tuple[str, float]],
+    x_variable: str,
+    y_variable: str,
+    f: Callable = (lambda x: x),
+    algorithms: List[dict] = None,
+    aggregation_function: Callable[List[float], float] = np.mean
+    ):
+
+    if algorithms == None:
+        algorithms = []
+        for episode in episodes:
+            if episode['algorithm'] not in algorithms:
+                algorithms.append(episode['algorithm'])
+        #algorithms = {episode['algorithm'] for episode in episodes}
+    
+    plots = []
+
+    for algorithm in algorithms:
+        x_values = [episode['init'][x_variable] for episode in episodes if np.all([episode['init'][fixed_variable] == fixed_value and episode['algorithm'] == algorithm for fixed_variable, fixed_value in fixed])]
+        x_values.sort()
+        y_values = []
+        for x_val in x_values:
+            y_values.append(aggregation_function([f(episode['results'][y_variable]) for episode in episodes if episode['init'][x_variable] == x_val and np.all([episode['init'][fixed_variable] == fixed_value and episode['algorithm'] == algorithm for fixed_variable, fixed_value in fixed])]))
+        plots.append({
+            'algorithm': algorithm,
+            'x_values': x_values,
+            'y_values': y_values
+        })
+
+    for p in plots:
+        plt.plot(p['x_values'], p['y_values'], label=p['algorithm']['name'], marker='o')
+    
+    plt.xlabel(x_variable)
+    plt.ylabel(f'{aggregation_function.__name__} {y_variable}')
+
+    plt.legend()
+
+    return plt

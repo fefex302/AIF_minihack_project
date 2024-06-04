@@ -349,9 +349,9 @@ class MiniHackGoldRoom(MiniHack):
         if env_map is None:
             env_map = self.matrix_map
         x, y = np.where(env_map == AGENT_CHAR)
-        #if list(x) == [] and list(y) == []:
-        #    print('Hidden agent')
-        #    return self.agent_coord
+        if list(x) == [] and list(y) == []:
+            print('Hidden agent')
+            return self.agent_coord
         return y[0], self.height - x[0] - 1
     
 
