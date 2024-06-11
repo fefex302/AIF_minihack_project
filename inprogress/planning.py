@@ -26,6 +26,15 @@ class Plan:
         print(f'Actions: {[action_to_string(action) for action in self.action_sequence]}')
         total_score = sum([np.linalg.norm(action_to_move(action)) * env.time_penalty for action in self.action_sequence]) + env.gold_score * len([coord for coord in env.gold_coords if coord in self.path])
         print(f'Total score: {round(total_score, 3)}')
+    
+
+    def stats(self, env: MiniHackGoldRoom) -> dict:
+        total_score = sum([np.linalg.norm(action_to_move(action)) * env.time_penalty for action in self.action_sequence]) + env.gold_score * len([coord for coord in env.gold_coords if coord in self.path])
+        total_score = round(total_score, 3)
+        return {
+            'path_len': len(self.path),
+            'score': total_score
+        }
 
 
     
@@ -108,9 +117,10 @@ def a_star_search(
     
     if g == None:
         g = lambda next_state, curr_state, curr_g: default_score(next_state=next_state.to_dict(), curr_state=curr_state.to_dict(), env=env.to_dict(), curr_g=curr_g)
-    if h == None:
+
+    if h == None: 
         h = lambda state: default_heuristic(state=state.to_dict(), env=env.to_dict())
-    
+
     _, init_g = env.myreset()
 
     init_state = State(
@@ -189,10 +199,12 @@ def a_star_search(
                         height=env2.height,
                         to_avoid=to_avoid
                     )
-
+                    
                     subplan, n_expanded_nodes = a_star_search(
                         env=env2,
-                        allowed_moves_function=sub_allowed_moves_function
+                        allowed_moves_function=sub_allowed_moves_function,
+                        g=g,
+                        h=h
                         )
 
                     additional_expanded_nodes += n_expanded_nodes
@@ -254,12 +266,22 @@ def a_star_search(
     return plan, len(expanded_nodes) + additional_expanded_nodes
 
 
+def weighted_a_star_search(
+    env: MiniHackGoldRoom,
+    w: float,
+    allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
+) -> Tuple[Plan, int]:
+    
+    h = lambda state: w*default_heuristic(state=state.to_dict(), env=env.to_dict())
+
+    return a_star_search(env=env, h=h, allowed_moves_function=allowed_moves_function)
+
+
 def uniform_cost_search(
     env: MiniHackGoldRoom,
     allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
 ) -> Tuple[Plan, int]:
 
-    
     return a_star_search(env=env, h=(lambda state: 0), allowed_moves_function=allowed_moves_function)
 
 
@@ -268,7 +290,7 @@ def greedy_search(
     allowed_moves_function: AllowedMovesFunction = ALLOWED_SIMPLE_MOVES
 ) -> Tuple[Plan, int]:
 
-    return a_star_search(env=env, g=(lambda next_state, curr_state, curr_g: 0))
+    return a_star_search(env=env, g=(lambda next_state, curr_state, curr_g: 0), allowed_moves_function=allowed_moves_function)
 
 
 def random_search(

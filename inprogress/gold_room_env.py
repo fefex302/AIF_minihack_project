@@ -20,22 +20,6 @@ Actions = enum.IntEnum(
 
 ACTIONS = tuple(Actions)
 
-
-#STATS = ['x', 'y', 'strength_percentage', 'strength', 'dexterity', 'constitution', 'intelligence',
-#    'wisdom', 'charisma', 'score', 'hitpoints (health)', 'max_hitpoints', 'depth', 'gold',
-#    'energy', 'max_energy', 'armor_class', 'monster_level', 'experience_level',
-#    'experience_points', 'time', 'hunger_state', 'carrying_capacity',
-#    'dungeon_number', 'level_number']
-
-#X_COORD = 0
-#Y_COORD = 1
-#STRENGTH_PERCENTAGE = 2
-#STRENGTH = 3
-#HEALTH = 10
-#GOLD = 13
-#TIME = 15
-#CARRYING_CAPACITY = 17
-
 GOLD_CHAR = 36
 LEPRECHAUN_CHAR = 108
 AGENT_CHAR = 64
@@ -368,18 +352,9 @@ class MiniHackGoldRoom(MiniHack):
 
 
     def state(self):
-        #stats = minihack_state['blstats']
-        #stats_dict = {
-        #    'health': stats[HEALTH],
-        #    'gold': stats[GOLD],
-        #    'time': stats[TIME],
-        #    'carrying_capacity': stats[CARRYING_CAPACITY]
-        #}
         env_state = {
-            #'health': stats[HEALTH],
-            'gold': self.collected_gold,#stats[GOLD],
-            'time': self.instant,#stats[TIME],
-            #'carrying_capacity': stats[CARRYING_CAPACITY],
+            'gold': self.collected_gold,
+            'time': self.instant,
             'agent_coord': self.agent_coord,
             'stair_coord': self.stair_coord,
             'gold_coords': self.gold_coords,

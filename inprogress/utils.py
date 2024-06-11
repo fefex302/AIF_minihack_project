@@ -1,10 +1,12 @@
 import time
 import matplotlib.pyplot as plt
+from matplotlib.axes._axes import Axes
 import IPython.display as display
 import random
 import numpy as np
 from queue import PriorityQueue
 from typing import List, Tuple, Callable
+import json
 
 import gym
 from tqdm import tqdm
@@ -224,14 +226,6 @@ def scaled_default_score(next_state: dict, curr_state: dict, env: dict, curr_g: 
         return 0
     return (default_score(next_state=next_state, curr_state=curr_state, env=env, curr_g=curr_g) - min_g_value) / (max_g_value - min_g_value)
 
-
-#def scaled_score2(next_state: dict, curr_state: dict, env: dict, prev_g: float = 0.0) -> float:
-#    max_g_value = env['time_penalty'] + env['gold_score'] + env['stair_score']
-#    min_g_value = env['time_penalty']
-#    mod_state = next_state
-#    mod_state['gold_coords'] = [coord for coord in next_state['gold_coords'] if coord != next_state['agent_coord']]
-#    return (default_score(next_state=mod_state, curr_state=curr_state, env=env, prev_g=prev_g) - min_g_value) / (max_g_value - min_g_value)
-
 def run_episodes(
     widths: List[int],
     heights: List[int],
@@ -244,6 +238,7 @@ def run_episodes(
     alg_paramss: List[List[dict]],
     max_steps: int,
     n_episodes: int,
+    max_fraction = 0.8,
     return_states: bool = False
     ) -> List[dict]:
 
@@ -253,26 +248,21 @@ def run_episodes(
         for time_penalty in tqdm(time_penalties, total=len(time_penalties), desc=f'Size: {width}x{height}'):
             for gold_score in gold_scores:
                 for stair_score in stair_scores:
-                    for ng in n_golds:
-                        for nl in n_leps:
-                            init = {
-                                'width': width,
-                                'height': height,
-                                'n_golds': ng,
-                                'n_leps': nl,
-                                'gold_score': gold_score,
-                                'time_penalty': time_penalty
-                            }
-                            
-                            for search_algorithm, alg_params in zip(algorithms, alg_paramss):
-                                for kwargs in alg_params:#tqdm(alg_params, total=len(alg_params), desc=f'Size: {width}x{height}, Num golds: {ng}, Num leps: {nl}, Gold score: {gold_score}, Stair score: {stair_score}, Time penalty: {time_penalty}, Algorithm: {search_algorithm.__name__}'):
-                                    algorithm = {
-                                        'name': search_algorithm.__name__,
-                                        'params': kwargs
+                    for nl in n_leps:
+                        if nl < max_fraction*width*height:
+                            for ng in tqdm(n_golds, total=len(n_golds), desc=f'size: {width}x{height}, time_penalty: {time_penalty}, gold_score: {gold_score}, n_leps: {nl}'):
+                                if ng < max_fraction*width*height:
+  
+                                    init = {
+                                        'width': width,
+                                        'height': height,
+                                        'n_golds': ng,
+                                        'n_leps': nl,
+                                        'gold_score': gold_score,
+                                        'time_penalty': time_penalty
                                     }
 
                                     for _ in range(n_episodes):
-                                    
                                         env = gym.make(
                                             'MiniHack-MyTask-Custom-v0',
                                             width=width,
@@ -284,28 +274,52 @@ def run_episodes(
                                             stair_score=stair_score,
                                             time_penalty=time_penalty
                                             )
-                                        states, rewards, done, iters, steps = search_algorithm(env=env, max_steps=max_steps, **kwargs)
-                                        gold_thefts = [-gold_score for r in rewards if r < time_penalty]
-                                        gold_gains = [gold_score for r in rewards if r > time_penalty]
-                                        results = {
-                                            'rewards':rewards,
-                                            'steps': steps,
-                                            'iters': iters,
-                                            'gold_thefts': gold_thefts,
-                                            'gold_gains': gold_gains,
-                                            'done': done
-                                        }
 
-                                        if return_states:
-                                            results['states'] = states
+                                        for search_algorithm, alg_params in zip(algorithms, alg_paramss):
+                                            for kwargs in alg_params:
 
-                                        episode = {
-                                            'init': init,
-                                            'algorithm': algorithm,
-                                            'results': results
-                                        }
-                                        episodes.append(episode)
-    return episodes
+                                                algorithm = {
+                                                    'name': search_algorithm.__name__,
+                                                    'params': [(key, str(value)) for key, value in kwargs.items()]
+                                                }
+
+                                                env.myreset()
+                                                states, rewards, done, iters, steps = search_algorithm(env=env, max_steps=max_steps, **kwargs)
+
+                                                gold_gains = [states[0]['gold']]
+                                                gold_thefts = [0]
+                                                for state in states[1:]:
+                                                    prev = gold_gains[-1]
+                                                    diff = state['gold']-prev
+                                                    if diff >= 0:
+                                                        gold_gains.append(diff)
+                                                        gold_thefts.append(0)
+                                                    else:
+                                                        gold_gains.append(0)
+                                                        gold_thefts.append(-diff)
+
+                                                results = {
+                                                    'rewards':rewards,
+                                                    'steps': steps,
+                                                    'iters': iters,
+                                                    'gold_thefts': gold_thefts,
+                                                    'gold_gains': gold_gains,
+                                                    'done': done
+                                                }
+
+                                                if return_states:
+                                                    results['states'] = states
+
+                                                episode = {
+                                                    'init': init,
+                                                    'algorithm': algorithm,
+                                                    'results': results
+                                                }
+                                                episodes.append(episode)
+
+                                    with open(f'episodes.json', 'w') as f:
+                                        json.dump(episodes, f)
+    return episodes     
 
 
 def get_plot(
@@ -313,6 +327,7 @@ def get_plot(
     fixed: List[Tuple[str, float]],
     x_variable: str,
     y_variable: str,
+    ax: Axes,
     f: Callable = (lambda x: x),
     algorithms: List[dict] = None,
     aggregation_function: Callable[List[float], float] = np.mean
@@ -323,28 +338,131 @@ def get_plot(
         for episode in episodes:
             if episode['algorithm'] not in algorithms:
                 algorithms.append(episode['algorithm'])
-        #algorithms = {episode['algorithm'] for episode in episodes}
     
     plots = []
 
     for algorithm in algorithms:
-        x_values = [episode['init'][x_variable] for episode in episodes if np.all([episode['init'][fixed_variable] == fixed_value and episode['algorithm'] == algorithm for fixed_variable, fixed_value in fixed])]
+
+        alg_string = algorithm['name']
+        for key, value in algorithm['params']:
+            if 'SimpleMoves' in value:
+                alg_string += ', simple moves'
+            elif 'CompositeMoves' in value:
+                alg_string += ', composite moves'
+            else:
+                alg_string += f', {key}={value}'
+
+        x_values = [episode['init'][x_variable] for episode in episodes if np.all([episode['init'][fixed_variable] == fixed_value and episode['algorithm']['name'] == algorithm['name'] and len([1 for p in algorithm['params'] if p in episode['algorithm']['params']])==len(algorithm['params']) for fixed_variable, fixed_value in fixed])]
         x_values.sort()
         y_values = []
         for x_val in x_values:
             y_values.append(aggregation_function([f(episode['results'][y_variable]) for episode in episodes if episode['init'][x_variable] == x_val and np.all([episode['init'][fixed_variable] == fixed_value and episode['algorithm'] == algorithm for fixed_variable, fixed_value in fixed])]))
         plots.append({
-            'algorithm': algorithm,
+            'algorithm': alg_string,
             'x_values': x_values,
             'y_values': y_values
         })
 
+    handles = []
+    labels = []
     for p in plots:
-        plt.plot(p['x_values'], p['y_values'], label=p['algorithm']['name'], marker='o')
+        handle, = ax.plot(p['x_values'], p['y_values'], label=p['algorithm'], marker='o')
+        handles.append(handle)
+        labels.append(p['algorithm'])
     
-    plt.xlabel(x_variable)
-    plt.ylabel(f'{aggregation_function.__name__} {y_variable}')
+    ax.set_xlabel(x_variable)
+    ax.set_ylabel(f'{aggregation_function.__name__} {y_variable}')
 
-    plt.legend()
+    return handles, labels
 
-    return plt
+
+def design_plan(
+    widths: List[int],
+    heights: List[int],
+    n_golds: List[int],
+    n_leps: List[int],
+    gold_scores: List[float],
+    stair_scores: List[float],
+    time_penalties: List[float],
+    algorithms: List[Callable],
+    alg_paramss: List[List[dict]],
+    max_steps: int,
+    n_episodes: int,
+    max_fraction = 0.8,
+    return_states: bool = False
+    ) -> List[dict]:
+
+    plans = []
+
+    i = 0
+    for width, height in zip(widths, heights):
+        for stair_score in stair_scores:
+            for time_penalty in time_penalties:
+                for gold_score in gold_scores:
+                    for nl in n_leps:
+                        if nl < max_fraction*width*height:
+                            for ng in tqdm(n_golds, total=len(n_golds), desc=f'size: {width}x{height}, time_penalty: {time_penalty}, gold_score: {gold_score}, n_leps: {nl}'):
+                                if ng < max_fraction*width*height:
+                            
+                                    init = {
+                                        'width': width,
+                                        'height': height,
+                                        'n_golds': ng,
+                                        'n_leps': nl,
+                                        'gold_score': gold_score,
+                                        'time_penalty': time_penalty
+                                    }
+
+                                    for _ in range(n_episodes):
+
+                                        env = gym.make(
+                                            'MiniHack-MyTask-Custom-v0',
+                                            width=width,
+                                            height=height,
+                                            n_leps=nl,
+                                            n_golds=ng,
+                                            max_episode_steps=max_steps,
+                                            gold_score=gold_score,
+                                            stair_score=stair_score,
+                                            time_penalty=time_penalty
+                                            )
+
+                                    
+                                        for search_algorithm, alg_params in zip(algorithms, alg_paramss):
+                                            for kwargs in alg_params:
+
+                                                params = []
+                                                for key, value in kwargs.items():
+                                                    if 'Moves' not in str(value):
+                                                        params.append((key, str(value)))
+                                                    elif 'Simple' in str(value):
+                                                        params.append((key, 'simple_moves'))
+                                                    else:
+                                                        params.append((key, 'composite_moves'))
+                                                        
+
+                                                algorithm = {
+                                                    'name': search_algorithm.__name__,
+                                                    'params': params
+                                                }
+
+                                                plan, expanded_nodes = search_algorithm(env=env, **kwargs)
+
+                                                plan_stats = plan.stats(env=env)
+
+                                                curr_plan = {
+                                                    'init': init,
+                                                    'algorithm': algorithm,
+                                                    'results': {
+                                                        'expanded_nodes': expanded_nodes,
+                                                        'path_len': plan_stats['path_len'],
+                                                        'score': plan_stats['score']
+                                                    }
+                                                }
+
+                                                plans.append(curr_plan)
+
+                                    with open(f'plans.json', 'w') as f:
+                                        json.dump(plans, f)
+
+    return plans        

@@ -66,8 +66,6 @@ def online_search_f(env: MiniHackGoldRoom, value_function: Callable[[dict, dict]
             next_value = next_values[next_value_index]
 
             if random.uniform(0, 1) <= prob_move(t=i, curr_value=curr_value, next_value=next_value):
-                #action = move_to_action(random.sample(population=moves, k=1)[0])
-            #else:
                 action = move_to_action(moves[next_value_index])
                 state, reward, done = env.mystep(action=action)
                 state['gold_coords'] = [coord for coord in state['gold_coords'] if coord != state['stair_coord']]
@@ -88,11 +86,18 @@ def online_search_f(env: MiniHackGoldRoom, value_function: Callable[[dict, dict]
 
     return states, rewards, done, i, i-nop
 
-#def hill_climbing(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000):
-#    return online_search_f(env=env, value_function=value_function, max_steps=max_steps, prob_rand_move=lambda t, curr_value, next_value: np.exp((curr_value - next_value) / (max_steps - t)))
-
 def online_greedy_search(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000):
     return online_search_f(env=env, value_function=value_function, max_steps=max_steps)
+
+
+def weighted_online_greedy_search(env: MiniHackGoldRoom, w: float, max_steps: int = 1000):
+    env_dict = env.to_dict()
+    env_dict['gold_coords'] = [coord for coord in env_dict['gold_coords'] if coord != env_dict['stair_coord']]
+    h = lambda state: w*scaled_default_heuristic(state=state, env=env_dict)
+    g = lambda next_state, curr_state: scaled_default_score(next_state=next_state, curr_state=curr_state, env=env_dict)
+    value_function = lambda next_state, curr_state: g(next_state=next_state, curr_state=curr_state) + h(state=next_state)
+    return online_search_f(env=env, value_function=value_function, max_steps=max_steps)
+
 
 def simulated_annealing(env: MiniHackGoldRoom, value_function: Callable[[dict, dict], float] = None, max_steps: int = 1000, temperature: Callable[[int, float, float], float] = None, k = 1):
     
