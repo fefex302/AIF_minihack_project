@@ -20,11 +20,15 @@ Actions = enum.IntEnum(
 
 ACTIONS = tuple(Actions)
 
+# in minihack something is identified as a char, a char can be seen as a number, which we use to refer to that specific entity.
 GOLD_CHAR = 36
 LEPRECHAUN_CHAR = 108
 AGENT_CHAR = 64
 STAIR_CHAR = 62
 
+# this is the class that we use to create our custom environment, we can customize the number of gold, leprechauns, the size
+# of the map. 
+# We can also set the rewards and penalties for each of the action we are able to do.
 class MiniHackGoldRoom(MiniHack):
 
     # Constructor ------------------------------------------------------------------------------------------------------
@@ -46,7 +50,7 @@ class MiniHackGoldRoom(MiniHack):
     ):
         # Argument checks ---------------------------------------------------------------------
 
-        # Type checks
+        # Type checks for each variable of the class
 
         if not isinstance(width, int):
             raise TypeError(f'width parameter must be of type int, not {type(width)}')
