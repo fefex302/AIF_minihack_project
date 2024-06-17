@@ -53,22 +53,3 @@ CONFIG_ONLINE = {
             [{}]
         ]
 }
-
-CONFIG_ONLINE2 = {
-    'widths': list(range(2, 9, 1)),
-    'heights': list(range(2, 9, 1)),
-    'n_golds': list(range(1, 9, 2)),
-    'n_leps': list(range(0, 10, 2)),
-    'gold_scores': [100],
-    'stair_scores': [0],
-    'time_penalties': [-1, -5, -10, -15],
-    'max_steps': 1000,
-    'n_episodes': 3,
-    'algorithms': [online_greedy_search, weighted_online_greedy_search, online_random_greedy_search, simulated_annealing],
-    'alg_paramss': [
-            [{}],
-            [{'w': 0.5}, {'w': 2}],
-            [{'prob_rand_move': 0.5, 'decay': 0.5}, {'prob_rand_move': 0.3, 'decay': 0.5}, {'prob_rand_move': 0.3, 'decay': 0}],
-            [{}]
-        ]
-}
